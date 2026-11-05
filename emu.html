@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRH / 复兴号 / 经典普速 列车侧面图标库 (140×32 / 72×24 / 24×12 Marker)</title>
+<style>
+:root {
+  --bg: #f8fafc; --card: #ffffff; --fg: #0f172a; --muted: #64748b;
+  --bd: #e2e8f0; --stage: #f1f5f9; --accent: #2563eb;
+}
+body.dark {
+  --bg: #0f172a; --card: #1e293b; --fg: #f1f5f9; --muted: #94a3b8;
+  --bd: #334155; --stage: #0f172a; --accent: #38bdf8;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 0 0 60px; background: var(--bg); color: var(--fg);
+  font: 13px/1.5 system-ui, -apple-system, "PingFang SC", sans-serif;
+}
+.top {
+  position: sticky; top: 0; z-index: 20; background: var(--card);
+  border-bottom: 1px solid var(--bd); padding: 12px 24px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+}
+.top h1 { margin: 0; font-size: 17px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.top .sub { font-size: 12px; color: var(--muted); font-weight: normal; }
+.ctrl { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.seg { display: inline-flex; border: 1px solid var(--bd); border-radius: 6px; overflow: hidden; background: var(--stage); }
+.seg button {
+  border: 0; background: transparent; color: var(--fg); padding: 5px 10px;
+  font: 12px system-ui; cursor: pointer; border-right: 1px solid var(--bd);
+}
+.seg button:last-child { border-right: 0; }
+.seg button.on { background: var(--accent); color: #fff; font-weight: 600; }
+.btn {
+  border: 1px solid var(--bd); background: var(--card); color: var(--fg);
+  padding: 5px 10px; border-radius: 6px; font: 12px system-ui; cursor: pointer;
+  text-decoration: none;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.wrap { max-width: 1320px; margin: 0 auto; padding: 0 24px; }
+.sec-title {
+  margin: 26px 0 10px; font-size: 14px; font-weight: 700; color: var(--fg);
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--bd); padding-bottom: 6px;
+}
+.grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px;
+}
+body.mode-half .grid {
+  grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+}
+body.mode-marker .grid {
+  grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+}
+.card {
+  background: var(--card); border: 1px solid var(--bd); border-radius: 8px;
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 7px;
+  transition: border-color .15s, transform .15s;
+}
+.card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.card.target { outline: 2px solid var(--accent); }
+.stage {
+  background: var(--stage); border-radius: 6px; padding: 10px 8px;
+  display: flex; align-items: center; justify-content: center; min-height: 54px;
+  position: relative; overflow: hidden; gap: 12px;
+}
+body.checker .stage {
+  background-image: linear-gradient(45deg, rgba(128,128,128,.12) 25%, transparent 25%),
+                    linear-gradient(-45deg, rgba(128,128,128,.12) 25%, transparent 25%),
+                    linear-gradient(45deg, transparent 75%, rgba(128,128,128,.12) 75%),
+                    linear-gradient(-45deg, transparent 75%, rgba(128,128,128,.12) 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+}
+.stage svg { display: block; transition: transform .15s; }
+body.flip .stage svg { transform: scaleX(-1); }
+.rail-demo {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.rail-line {
+  width: 38px; height: 2px; background: #e5484d; border-radius: 1px; margin-top: -1px;
+}
+.info { display: flex; flex-direction: column; gap: 2px; }
+.info .m-name { font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: space-between; }
+.info .m-sub { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.info .m-act { display: flex; gap: 8px; margin-top: 2px; }
+.info .m-act a { font-size: 11px; color: var(--accent); cursor: pointer; text-decoration: none; }
+.info .m-act a:hover { text-decoration: underline; }
+.tbl-wrap {
+  background: var(--card); border: 1px solid var(--bd); border-radius: 8px;
+  overflow: hidden; margin-top: 10px;
+}
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th, td { padding: 6px 10px; border-bottom: 1px solid var(--bd); text-align: left; vertical-align: middle; }
+th { background: var(--stage); font-weight: 600; color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.toast {
+  position: fixed; bottom: 20px; right: 20px; background: #0f172a; color: #fff;
+  padding: 8px 14px; border-radius: 6px; font-size: 12px; opacity: 0;
+  pointer-events: none; transition: opacity .2s; z-index: 99;
+}
+.toast.on { opacity: 0.95; }
+</style>
+</head>
+<body>
+<div class="top">
+  <div>
+    <h1>列车侧面涂装图标库 <span style="font-size:12px;font-weight:500;color:var(--muted)">140×32 完整头车 / 72×24 半个车头 / 24×12 地图 Marker · 共 42 款（含 10 款经典普速）</span></h1>
+    <div class="sub">提供完整头车、面板半车头、以及高对比度抽象化的地图贴轨 Marker 三种规格。点击卡片可复制或下载对应规格的 SVG。</div>
+  </div>
+  <div class="ctrl">
+    <div class="seg" id="modeSeg">
+      <button data-mode="full" class="on">完整头车 (140×32)</button>
+      <button data-mode="half">半个车头 (72×24)</button>
+      <button data-mode="marker">地图 Marker (24×12)</button>
+    </div>
+    <div class="seg" id="szSeg">
+      <button data-scale="1" class="on" id="szBtn1">1× (140×32)</button>
+      <button data-scale="1.5" id="szBtn15">1.5× (210×48)</button>
+      <button data-scale="2" id="szBtn2">2× (280×64)</button>
+      <button data-scale="3" id="szBtn3" style="display:none">3× (72×36)</button>
+      <button data-scale="4" id="szBtn4" style="display:none">4× (96×48)</button>
+    </div>
+    <div class="seg" id="dirSeg">
+      <button data-dir="l" class="on">← 朝左</button>
+      <button data-dir="r">朝右 →</button>
+    </div>
+    <div class="seg" id="bgSeg">
+      <button data-bg="light" class="on">浅色</button>
+      <button data-bg="dark">深色</button>
+      <button data-bg="checker">透明格</button>
+    </div>
+    <a class="btn" href="index.html">← 返回运行地图</a>
+  </div>
+</div>
+
+<div class="wrap" id="gallery"></div>
+
+<div class="wrap">
+  <div class="sec-title">
+    <span>全量车型与本务机车自动映射表（manual/rolling_stock.csv + 普速机车/客车 · 85 种）</span>
+    <span style="font-size:12px;font-weight:400;color:var(--muted)">同时对照 <code>140×32 完整头车</code> · <code>72×24 半个车头</code> · <code>24×12 地图 Marker</code></span>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:156px">完整头车 (140×32)</th>
+          <th style="width:90px">半个头 (72×24)</th>
+          <th style="width:76px">Marker (24×12)</th>
+          <th>12306 车型代码</th>
+          <th>归属图标模板</th>
+          <th>编组</th>
+          <th>最高时速</th>
+          <th>牵引方式</th>
+          <th>备注 / 实车复查链接</th>
+        </tr>
+      </thead>
+      <tbody id="mapRows"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="toast" id="toast">已复制 SVG 代码到剪贴板</div>
+
+<script src="emu_icons.js?v=18"></script>
+<script>
+const GROUPS = [["复兴号 400 / 350 km/h 高速动车组", ["CR450AF", "CR450BF", "CR400AF", "CR400AF-Z", "CR400BF", "CR400BF-Z", "CR400BF-C"]], ["复兴号 250 km/h 准高速动车组（蓝暖男）", ["CR300AF", "CR300BF"]], ["和谐号 350 km/h 高速动车组（CRH380 系列）", ["CRH380A", "CRH380B", "CRH380CL", "CRH380D"]], ["和谐号 250 km/h 干线动车组（CRH1 / 2 / 3 / 5 系列）", ["CRH1A", "CRH1A-A", "CRH1E", "CRH2A", "CRH2C", "CRH2G", "CRH3C", "CRH3A", "CRH5A"]], ["城际与市域动车组（CRH6 / CJ 系列）", ["CRH6A", "CRH6F", "CJ1"]], ["复兴号 160 km/h 动力集中动车组（CR200J / 澜沧号）", ["CR200J1", "CR200J3", "ZL200J"]], ["经典常用普速机车与客车（Z / T / K / 普快本务）", ["HXD1D", "HXD3D", "HXD3C", "DF11G", "DF11", "DF4D", "DF4B", "HXN3", "NJ2", "SS9G", "SS8", "YZ25T"]], ["高速综合检测与试验列车（黄医生 / 试验车）", ["CR400AF-J", "CR400BF-J", "CRH380AJ", "CRH380AM"]]];
+const META = {"CR450AF": {"id": "CR450AF", "label": "CR450AF", "sub": "复兴号 400km/h 飞龙箭鼻"}, "CR450BF": {"id": "CR450BF", "label": "CR450BF", "sub": "复兴号 400km/h 金凤箭鼻"}, "CR400AF": {"id": "CR400AF", "label": "CR400AF", "sub": "复兴号 红神龙（含 -A/-B/-G/-S）"}, "CR400AF-Z": {"id": "CR400AF-Z", "label": "CR400AF-Z", "sub": "复兴号 智能型 瑞龙智行（含 -AZ/-BZ/-C）"}, "CR400BF": {"id": "CR400BF", "label": "CR400BF", "sub": "复兴号 金凤（含 -A/-B/-G/-S）"}, "CR400BF-Z": {"id": "CR400BF-Z", "label": "CR400BF-Z", "sub": "复兴号 智能型 龙凤呈祥（含 -AZ/-BZ/-GZ）"}, "CR400BF-C": {"id": "CR400BF-C", "label": "CR400BF-C", "sub": "复兴号 京张智能型 瑞雪迎春"}, "CR300AF": {"id": "CR300AF", "label": "CR300AF", "sub": "复兴号 250km/h 蓝暖男（飞龙系）"}, "CR300BF": {"id": "CR300BF", "label": "CR300BF", "sub": "复兴号 250km/h 蓝暖男（金凤系）"}, "CRH380A": {"id": "CRH380A", "label": "CRH380A", "sub": "和谐号 长剑鼻（含 CRH380AL）"}, "CRH380B": {"id": "CRH380B", "label": "CRH380B", "sub": "和谐号 高速Velaro（含 BL/BG）"}, "CRH380CL": {"id": "CRH380CL", "label": "CRH380CL", "sub": "和谐号 长客日立长编"}, "CRH380D": {"id": "CRH380D", "label": "CRH380D", "sub": "和谐号 庞巴迪 Zefiro 380"}, "CRH1A": {"id": "CRH1A", "label": "CRH1A", "sub": "和谐号 庞巴迪经典大窗（含 CRH1B）"}, "CRH1A-A": {"id": "CRH1A-A", "label": "CRH1A-A", "sub": "和谐号 Zefiro 250NG"}, "CRH1E": {"id": "CRH1E", "label": "CRH1E", "sub": "和谐号 250km/h 纵向/横向动卧"}, "CRH2A": {"id": "CRH2A", "label": "CRH2A", "sub": "和谐号 经典鸭嘴兽（含 CRH2B/2E）"}, "CRH2C": {"id": "CRH2C", "label": "CRH2C", "sub": "和谐号 350km/h 灰耳鸭嘴兽（含 1/2阶段）"}, "CRH2G": {"id": "CRH2G", "label": "CRH2G", "sub": "和谐号 高寒抗风沙骏马"}, "CRH3C": {"id": "CRH3C", "label": "CRH3C", "sub": "和谐号 西门子 Velaro CN 原型"}, "CRH3A": {"id": "CRH3A", "label": "CRH3A", "sub": "和谐号 250km/h 黄金眼（含 CRH3A-A）"}, "CRH5A": {"id": "CRH5A", "label": "CRH5A", "sub": "和谐号 阿尔斯通高寒驴车（含 CRH5G/5E）"}, "CRH6A": {"id": "CRH6A", "label": "CRH6A", "sub": "和谐号 200km/h 城际动车组（含 CRH6A-A）"}, "CRH6F": {"id": "CRH6F", "label": "CRH6F", "sub": "和谐号 160km/h 市域动车组（含 CRH6F-A）"}, "CJ1": {"id": "CJ1", "label": "CJ1", "sub": "城际动车组（含 CJ6）"}, "CR200J1": {"id": "CR200J1", "label": "CR200J (一/二代)", "sub": "复兴号 160km/h 动力集中（立及甬）"}, "CR200J3": {"id": "CR200J3", "label": "CR200J (三代)", "sub": "复兴号 160km/h 鼓形车体（AD钙奶/高原双源）"}, "ZL200J": {"id": "ZL200J", "label": "ZL200J (澜沧号)", "sub": "中老铁路 160km/h 动力集中动车组"}, "CRH380AJ": {"id": "CRH380AJ", "label": "CRH380AJ", "sub": "高速综合检测列车（黄医生）"}, "CRH380AM": {"id": "CRH380AM", "label": "CRH380AM", "sub": "更高速度试验列车（青铜剑）"}, "CR400AF-J": {"id": "CR400AF-J", "label": "CR400AF-J", "sub": "复兴号 高速综合检测列车（飞龙黄医生）"}, "CR400BF-J": {"id": "CR400BF-J", "label": "CR400BF-J", "sub": "复兴号 高速综合检测列车（金凤黄医生）"}, "HXD1D": {"id": "HXD1D", "label": "HXD1D (大红枣)", "sub": "准高速客运电力机车 · Z/T/K 主力本务"}, "HXD3D": {"id": "HXD3D", "label": "HXD3D (红衣主教)", "sub": "160km/h 准高速客运电力机车 · 干线直特主力"}, "HXD3C": {"id": "HXD3C", "label": "HXD3C", "sub": "客货通用电力机车 · 蓝白红经典涂装"}, "DF11G": {"id": "DF11G", "label": "DF11G (跨越号)", "sub": "170km/h 准高速双机重联内燃机车（猪头）"}, "DF11": {"id": "DF11", "label": "DF11", "sub": "170km/h 准高速客运内燃机车（经典奶油黄+深蓝双色）"}, "DF4D": {"id": "DF4D", "label": "DF4D (提速客运型)", "sub": "145/170km/h 经典黄红涂装客运内燃机车"}, "HXN3": {"id": "HXN3", "label": "HXN3", "sub": "HXN3 高原型 · 拉日线等，青藏线与 NJ2 并用"}, "NJ2": {"id": "NJ2", "label": "NJ2", "sub": "GE 高原型内燃 · 青藏线格拉段客运（绿黄涂装）"}, "DF4B": {"id": "DF4B", "label": "DF4B (武局绿)", "sub": "经典国槐绿客运内燃机车 · 普快/慢车代表"}, "SS9G": {"id": "SS9G", "label": "SS9G (韶山9改)", "sub": "170km/h 经典上白下红流线型客运电力机车"}, "SS8": {"id": "SS8", "label": "SS8 (韶山8)", "sub": "170km/h 准高速客运电力机车（蓝白橘红）"}, "YZ25T": {"id": "YZ25T", "label": "25G / 25T 绿皮车", "sub": "国铁标准国槐绿黄腰带普速客车车底"}};
+const CSV_MODELS = [{"model": "CR450AF", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "设计 400，运营按 350", "sample": ""}, {"model": "CR450BF", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "设计 400，运营按 350", "sample": ""}, {"model": "CR400AF", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "", "sample": "C2702"}, {"model": "CR400AF-A", "cars": "16", "kmh": "350", "traction": "动力分散", "note": "长编", "sample": "G381"}, {"model": "CR400AF-B", "cars": "17", "kmh": "350", "traction": "动力分散", "note": "超长编", "sample": "G11"}, {"model": "CR400AF-Z", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "智能型", "sample": "G2647"}, {"model": "CR400AF-AZ", "cars": "16", "kmh": "350", "traction": "动力分散", "note": "智能型长编", "sample": ""}, {"model": "CR400AF-BZ", "cars": "17", "kmh": "350", "traction": "动力分散", "note": "智能型超长编", "sample": "G7"}, {"model": "CR400AF-S", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "", "sample": "D6919"}, {"model": "CR400AF-AS", "cars": "16", "kmh": "350", "traction": "动力分散", "note": "", "sample": "G69"}, {"model": "CR400AF-BS", "cars": "17", "kmh": "350", "traction": "动力分散", "note": "", "sample": "G9"}, {"model": "CR400AF-C", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "智能型", "sample": ""}, {"model": "CR400AF-G", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "高寒", "sample": ""}, {"model": "CR400AF-X", "cars": "", "kmh": "350", "traction": "动力分散", "note": "后缀含义未核实", "sample": ""}, {"model": "CR400BF", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "", "sample": "G1210"}, {"model": "CR400BF-A", "cars": "16", "kmh": "350", "traction": "动力分散", "note": "长编", "sample": "G1"}, {"model": "CR400BF-B", "cars": "17", "kmh": "350", "traction": "动力分散", "note": "超长编", "sample": "G5"}, {"model": "CR400BF-Z", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "智能型", "sample": "D6915"}, {"model": "CR400BF-AZ", "cars": "16", "kmh": "350", "traction": "动力分散", "note": "智能型长编", "sample": "G301"}, {"model": "CR400BF-BZ", "cars": "17", "kmh": "350", "traction": "动力分散", "note": "智能型超长编", "sample": ""}, {"model": "CR400BF-S", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "", "sample": ""}, {"model": "CR400BF-AS", "cars": "16", "kmh": "350", "traction": "动力分散", "note": "", "sample": "G41"}, {"model": "CR400BF-BS", "cars": "17", "kmh": "350", "traction": "动力分散", "note": "", "sample": "G3"}, {"model": "CR400BF-C", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "京张智能型", "sample": "G7831"}, {"model": "CR400BF-G", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "高寒", "sample": ""}, {"model": "CR400BF-GZ", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "高寒智能型", "sample": ""}, {"model": "CR400BF-GS", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "高寒", "sample": ""}, {"model": "CR300AF", "cars": "8", "kmh": "250", "traction": "动力分散", "note": "", "sample": "D1717"}, {"model": "CR300BF", "cars": "8", "kmh": "250", "traction": "动力分散", "note": "", "sample": "D1043"}, {"model": "CRH380A", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "", "sample": "D6901"}, {"model": "CRH380AL", "cars": "16", "kmh": "350", "traction": "动力分散", "note": "长编", "sample": "G525"}, {"model": "CRH380B", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "", "sample": "D6913"}, {"model": "CRH380BL", "cars": "16", "kmh": "350", "traction": "动力分散", "note": "长编", "sample": "G1297"}, {"model": "CRH380BG", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "高寒", "sample": ""}, {"model": "CRH380CL", "cars": "16", "kmh": "350", "traction": "动力分散", "note": "长编", "sample": ""}, {"model": "CRH380D", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "", "sample": "G2615"}, {"model": "CRH2A", "cars": "8", "kmh": "250", "traction": "动力分散", "note": "", "sample": "D1035"}, {"model": "CRH2B", "cars": "16", "kmh": "250", "traction": "动力分散", "note": "长编", "sample": "D2195"}, {"model": "CRH2C", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "一阶段 300、二阶段 350", "sample": ""}, {"model": "CRH2C-1", "cars": "8", "kmh": "300", "traction": "动力分散", "note": "一阶段 300", "sample": "G7585"}, {"model": "CRH2C-2", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "二阶段 350", "sample": "G3313"}, {"model": "CRH2E", "cars": "16", "kmh": "250", "traction": "动力分散", "note": "卧铺", "sample": "D901"}, {"model": "CRH2G", "cars": "8", "kmh": "250", "traction": "动力分散", "note": "高寒", "sample": "D2505"}, {"model": "CRH3A", "cars": "8", "kmh": "250", "traction": "动力分散", "note": "", "sample": "D1045"}, {"model": "CRH3C", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "", "sample": "G2233"}, {"model": "CRH1", "cars": "", "kmh": "250", "traction": "动力分散", "note": "12306 简写（未区分 A/B/E）", "sample": "D965"}, {"model": "CRH1A", "cars": "8", "kmh": "250", "traction": "动力分散", "note": "", "sample": "D3265"}, {"model": "CRH1A-A", "cars": "8", "kmh": "250", "traction": "动力分散", "note": "", "sample": "C7221"}, {"model": "CRH1B", "cars": "16", "kmh": "250", "traction": "动力分散", "note": "长编", "sample": ""}, {"model": "CRH1E", "cars": "16", "kmh": "250", "traction": "动力分散", "note": "卧铺", "sample": ""}, {"model": "CRH5A", "cars": "8", "kmh": "250", "traction": "动力分散", "note": "", "sample": "D6921"}, {"model": "CRH5G", "cars": "8", "kmh": "250", "traction": "动力分散", "note": "高寒", "sample": "D6931"}, {"model": "CRH5E", "cars": "16", "kmh": "250", "traction": "动力分散", "note": "卧铺", "sample": ""}, {"model": "CRH6A", "cars": "8", "kmh": "200", "traction": "动力分散", "note": "城际", "sample": "S101"}, {"model": "CRH6A-A", "cars": "4", "kmh": "200", "traction": "动力分散", "note": "城际短编", "sample": ""}, {"model": "CRH6F", "cars": "8", "kmh": "160", "traction": "动力分散", "note": "市域，起停性能按动车组", "sample": ""}, {"model": "CRH6F-A", "cars": "4", "kmh": "160", "traction": "动力分散", "note": "市域短编", "sample": "S501"}, {"model": "CJ1", "cars": "8", "kmh": "250", "traction": "动力分散", "note": "城际动车组", "sample": ""}, {"model": "CR200J", "cars": "", "kmh": "160", "traction": "动力集中", "note": "统称立及甬 / 垃圾桶（严禁叫绿巨人）；短编 / 长编辆数不一", "sample": "C101"}, {"model": "CR200J-A", "cars": "9", "kmh": "160", "traction": "动力集中", "note": "第一/二代立及甬短编（1动8拖）", "sample": ""}, {"model": "CR200J-B", "cars": "18", "kmh": "160", "traction": "动力集中", "note": "第一/二代立及甬长编（2动16拖）", "sample": ""}, {"model": "CR200J-C", "cars": "9", "kmh": "160", "traction": "动力集中", "note": "第三代 CR200J“AD钙奶”（鼓形车体短编，1动8拖）", "sample": "C947"}, {"model": "CR200J-D", "cars": "18", "kmh": "160", "traction": "动力集中", "note": "第三代 CR200J 长编（鼓形车体，2动16拖）", "sample": ""}, {"model": "CR200J1", "cars": "", "kmh": "160", "traction": "动力集中", "note": "第一代立及甬", "sample": ""}, {"model": "CR200J1-C", "cars": "9", "kmh": "160", "traction": "动力集中", "note": "第一代立及甬短编（1动8拖）", "sample": "D9"}, {"model": "CR200J1-D", "cars": "18", "kmh": "160", "traction": "动力集中", "note": "第一代立及甬长编（2动16拖）", "sample": ""}, {"model": "CR200J3", "cars": "", "kmh": "160", "traction": "动力集中", "note": "第三代 CR200J“AD钙奶”", "sample": ""}, {"model": "CR200J3-B", "cars": "18", "kmh": "160", "traction": "动力集中", "note": "第三代 CR200J 长编（2动16拖）", "sample": ""}, {"model": "CR200J3-C", "cars": "9", "kmh": "160", "traction": "动力集中", "note": "第三代 CR200J“AD钙奶”短编（1动8拖）", "sample": "D1"}, {"model": "CR200JS-G", "cars": "12", "kmh": "160", "traction": "动力集中", "note": "高原双源动力集中动车组（内电双源）", "sample": "C881"}, {"model": "ZL200J", "cars": "9", "kmh": "160", "traction": "动力集中", "note": "中老铁路澜沧号动力集中动车组", "sample": "D83"}, {"model": "HXD3D", "cars": "机辆", "kmh": "160", "traction": "电力机车", "note": "干线普速主力本务（涂装模式普速默认代表车型）", "sample": "Z1"}, {"model": "HXD1D", "cars": "机辆", "kmh": "160", "traction": "电力机车", "note": "准高速客运电力机车（大红枣）", "sample": "Z201"}, {"model": "HXD3C", "cars": "机辆", "kmh": "120", "traction": "电力机车", "note": "客货通用电力机车（蓝白红涂装）", "sample": "K27"}, {"model": "DF11G", "cars": "双机重联", "kmh": "170", "traction": "内燃机车", "note": "跨越号准高速内燃机车（猪头）", "sample": "Z49"}, {"model": "DF11", "cars": "机辆", "kmh": "170", "traction": "内燃机车", "note": "准高速客运内燃机车", "sample": "T1"}, {"model": "DF4D", "cars": "机辆", "kmh": "145", "traction": "内燃机车", "note": "提速客运型内燃机车", "sample": "K5288"}, {"model": "DF4B", "cars": "机辆", "kmh": "100", "traction": "内燃机车", "note": "经典国槐绿客运内燃机车（武局绿）", "sample": "6063"}, {"model": "SS9G", "cars": "机辆", "kmh": "170", "traction": "电力机车", "note": "韶山9改流线型客运电力机车", "sample": "T289"}, {"model": "SS8", "cars": "机辆", "kmh": "170", "traction": "电力机车", "note": "韶山8准高速客运电力机车", "sample": "T99"}, {"model": "YZ25T", "cars": "16~19", "kmh": "160", "traction": "普速客车", "note": "25G / 25T 国槐绿黄腰带标准普速车底", "sample": "Z1"}, {"model": "CR400AF-J", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "复兴号高速综合检测列车（飞龙黄医生）", "sample": ""}, {"model": "CR400BF-J", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "复兴号高速综合检测列车（金凤黄医生）", "sample": ""}, {"model": "CRH380AJ", "cars": "8", "kmh": "350", "traction": "动力分散", "note": "高速综合检测列车（黄医生）", "sample": ""}, {"model": "CRH380AM", "cars": "6", "kmh": "350", "traction": "动力分散", "note": "更高速度试验列车（青铜剑）", "sample": ""}];
+
+let curScale = 1, curMode = 'full', showCode = false;
+
+const SAMPLE_CODE_BY_ID = {
+  "CR450AF": "G1", "CR450BF": "G2", "CR400AF": "G1", "CR400AF-Z": "G7", "CR400BF": "G8901",
+  "CR400BF-Z": "G301", "CR400BF-C": "G7831", "CR300AF": "D1717", "CR300BF": "D1043",
+  "CRH380A": "G79", "CRH380B": "G1297", "CRH380CL": "G101", "CRH380D": "G2615",
+  "CRH1A": "D3265", "CRH1A-A": "C7221", "CRH1E": "D907", "CRH2A": "D3101", "CRH2C": "G7585",
+  "CRH2G": "D2505", "CRH3C": "G2233", "CRH3A": "D1045", "CRH5A": "D6921",
+  "CRH6A": "S101", "CRH6F": "S501", "CJ1": "C501", "CR200J1": "C7001", "CR200J3": "D1",
+  "ZL200J": "D83", "HXD1D": "Z201", "HXD3D": "Z1", "HXD3C": "K27", "DF11G": "Z49",
+  "DF11": "T1", "DF4D": "K5288", "DF4B": "6063", "SS9G": "T289", "SS8": "T99", "YZ25T": "Z1",
+  "CR400AF-J": "DJ1", "CR400BF-J": "DJ2", "CRH380AJ": "DJ5501", "CRH380AM": "DJ001"
+};
+
+function getSvgByMode(id, scale = curScale, mode = curMode) {
+  if (mode === 'marker') {
+    if (showCode) return emuMarkerWithCodeSvg(id, SAMPLE_CODE_BY_ID[id] || "G1", scale);
+    return emuMarkerSvg(id, scale);
+  }
+  return emuSvg(id, scale, mode === 'half');
+}
+
+function updateSizeLabels() {
+  const bw = curMode === 'marker' ? 24 : curMode === 'half' ? 72 : 140;
+  const bh = curMode === 'marker' ? 12 : curMode === 'half' ? 24 : 32;
+  document.getElementById('szBtn1').textContent = `1× (${bw}×${bh})`;
+  document.getElementById('szBtn15').textContent = `1.5× (${Math.round(bw*1.5)}×${Math.round(bh*1.5)})`;
+  document.getElementById('szBtn2').textContent = `2× (${bw*2}×${bh*2})`;
+  const b3 = document.getElementById('szBtn3'), b4 = document.getElementById('szBtn4');
+  if (b3 && b4) {
+    const showMore = curMode !== 'full';
+    b3.style.display = showMore ? '' : 'none';
+    b4.style.display = showMore ? '' : 'none';
+    b3.textContent = `3× (${bw*3}×${bh*3})`;
+    b4.textContent = `4× (${bw*4}×${bh*4})`;
+  }
+  document.body.classList.toggle('mode-half', curMode === 'half');
+  document.body.classList.toggle('mode-marker', curMode === 'marker');
+}
+
+function renderGallery() {
+  updateSizeLabels();
+  const modeDesc = curMode === 'marker' ? '24×12 低对比度特征细节 Marker（含 1× 贴轨、2.2× 放大及车尾随字加长车次效果）'
+                 : curMode === 'half' ? '72×24 半个车头' : '140×32 完整头车';
+  const gal = document.getElementById('gallery');
+  const codeToggleHtml = curMode === 'marker' ? `
+    <div style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:10px 14px">
+      <div style="font-size:12.5px;color:var(--muted)"><b>涂装 Marker 车上车次（z ≥ 11 车尾随字加长）</b>：完整保留车头风挡与斜切眼罩，车尾平直段按车次字数自动拉长</div>
+      <div class="seg" id="codeSeg">
+        <button data-code="0" class="${!showCode ? 'on' : ''}">无车次 (24×12)</button>
+        <button data-code="1" class="${showCode ? 'on' : ''}">带车次 (车尾随字加长)</button>
+      </div>
+    </div>` : '';
+  gal.innerHTML = codeToggleHtml + GROUPS.map(([gTitle, ids]) => `
+    <div class="sec-title"><span>${gTitle}</span><span style="font-size:12px;font-weight:400;color:var(--muted)">${ids.length} 款 · 当前 ${modeDesc}</span></div>
+    <div class="grid">
+      ${ids.map(id => {
+        const m = META[id];
+        const code = SAMPLE_CODE_BY_ID[id] || "G1";
+        const stageContent = curMode === 'marker'
+          ? (showCode
+              ? `<span class="rail-demo" title="2.4× 放大检视（车次 ${code}，车尾随字加长）">${emuMarkerWithCodeSvg(id, code, curScale * 2.4)}<i class="rail-line" style="width:100%"></i></span>`
+              : `<span title="2.2× 放大检视">${emuMarkerSvg(id, curScale * 2.2)}</span>`
+                + `<span class="rail-demo" title="1× 原尺寸 24×12 贴轨效果">${emuMarkerSvg(id, curScale)}<i class="rail-line"></i></span>`)
+          : getSvgByMode(id, curScale, curMode);
+        const hashPrefix = curMode === 'full' ? '' : curMode + '&';
+        return `<div class="card" id="card-${id}" data-id="${id}">
+          <div class="stage">${stageContent}</div>
+          <div class="info">
+            <div class="m-name"><span>${m.label}</span></div>
+            <div class="m-sub" title="${m.sub}">${m.sub}</div>
+            <div class="m-act">
+              <a href="#${hashPrefix}${id}" data-copy="${id}">复制 SVG</a>
+              <a href="#${hashPrefix}${id}" data-dl="${id}">下载 .svg</a>
+            </div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  `).join('');
+
+  document.getElementById('mapRows').innerHTML = CSV_MODELS.map(r => {
+    const k = resolveEmuModel(r.model);
+    return `<tr>
+      <td><div class="stage" style="display:inline-flex;padding:3px 6px;min-height:0">${emuSvg(k, 1, false)}</div></td>
+      <td><div class="stage" style="display:inline-flex;padding:3px 6px;min-height:0">${emuSvg(k, 1, true)}</div></td>
+      <td><div class="stage" style="display:inline-flex;padding:4px 8px;min-height:0">${emuMarkerSvg(k, 1)}</div></td>
+      <td><b>${r.model}</b></td>
+      <td><a href="#${curMode === 'full' ? '' : curMode + '&'}${k}" style="color:var(--accent);text-decoration:none"><code>${k}</code></a></td>
+      <td>${r.cars ? (/^[\d~]+$/.test(r.cars) ? r.cars + ' 编' : r.cars) : '—'}</td>
+      <td>${r.kmh} km/h</td>
+      <td>${r.traction}</td>
+      <td style="color:var(--muted)">${r.note || ''} ${r.sample ? `<a href="index.html#${r.sample}&mk=1" style="color:var(--accent);margin-left:4px">${r.sample} ↗</a>` : ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(t._tm);
+  t._tm = setTimeout(() => t.classList.remove('on'), 1800);
+}
+
+document.addEventListener('click', e => {
+  const codeBtn = e.target.closest('[data-code]');
+  if (codeBtn) {
+    showCode = codeBtn.dataset.code === '1';
+    renderGallery();
+    return;
+  }
+  const copyBtn = e.target.closest('[data-copy]');
+  if (copyBtn) {
+    e.preventDefault();
+    const id = copyBtn.dataset.copy;
+    const svg = getSvgByMode(id, 1, curMode);
+    navigator.clipboard.writeText(svg).then(() => showToast(`已复制 ${id} (${curMode === 'marker' ? '24×12 Marker' : curMode === 'half' ? '72×24 半头' : '140×32 全头'}) SVG 代码`));
+    return;
+  }
+  const dlBtn = e.target.closest('[data-dl]');
+  if (dlBtn) {
+    e.preventDefault();
+    const id = dlBtn.dataset.dl;
+    const svg = getSvgByMode(id, 1, curMode);
+    const blob = new Blob([svg], {type: 'image/svg+xml'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${id}${curMode === 'marker' ? '-marker' : curMode === 'half' ? '-half' : ''}.svg`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    return;
+  }
+});
+
+document.getElementById('modeSeg').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  for (const x of e.currentTarget.querySelectorAll('button')) x.classList.toggle('on', x === b);
+  curMode = b.dataset.mode;
+  renderGallery();
+});
+
+document.getElementById('szSeg').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  for (const x of e.currentTarget.querySelectorAll('button')) x.classList.toggle('on', x === b);
+  curScale = parseFloat(b.dataset.scale);
+  renderGallery();
+});
+
+document.getElementById('dirSeg').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  for (const x of e.currentTarget.querySelectorAll('button')) x.classList.toggle('on', x === b);
+  document.body.classList.toggle('flip', b.dataset.dir === 'r');
+});
+
+document.getElementById('bgSeg').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  for (const x of e.currentTarget.querySelectorAll('button')) x.classList.toggle('on', x === b);
+  const bg = b.dataset.bg;
+  document.body.classList.toggle('dark', bg === 'dark');
+  document.body.classList.toggle('checker', bg === 'checker');
+});
+
+function checkHash() {
+  const raw = decodeURIComponent(location.hash.slice(1));
+  const parts = raw.split('&').filter(Boolean);
+  let targetId = null;
+  if (parts.includes('code')) showCode = true;
+  if (parts.includes('marker') || parts.includes('code')) {
+    curMode = 'marker';
+    for (const b of document.querySelectorAll('#modeSeg button')) b.classList.toggle('on', b.dataset.mode === 'marker');
+  } else if (parts.includes('half')) {
+    curMode = 'half';
+    for (const b of document.querySelectorAll('#modeSeg button')) b.classList.toggle('on', b.dataset.mode === 'half');
+  } else if (parts.includes('full')) {
+    curMode = 'full';
+    for (const b of document.querySelectorAll('#modeSeg button')) b.classList.toggle('on', b.dataset.mode === 'full');
+  }
+  for (const p of parts) {
+    if (p !== 'half' && p !== 'full' && p !== 'marker' && p !== 'code') targetId = resolveEmuModel(p) || p;
+  }
+  renderGallery();
+  for (const c of document.querySelectorAll('.card.target')) c.classList.remove('target');
+  if (!targetId) return;
+  const el = document.getElementById('card-' + targetId);
+  if (el) {
+    el.classList.add('target');
+    el.scrollIntoView({behavior: 'smooth', block: 'center'});
+  }
+}
+window.addEventListener('hashchange', checkHash);
+checkHash();
+</script>
+</body>
+</html>

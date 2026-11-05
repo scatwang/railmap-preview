@@ -1,0 +1,2726 @@
+<!doctype html>
+<html lang="zh" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>一镜到底 · 跟车越行纪实（踩了多少车 & 被多少车踩）</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="vendor/leaflet.min.css">
+<script src="vendor/leaflet.min.js"></script>
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<script src="vendor/maplibre-gl.js"></script>
+<script src="vendor/leaflet-maplibre-gl.js"></script>
+<style>
+  :root {
+    --bg: #f3f1e9;
+    --bg-panel: rgba(247, 245, 238, 0.94);
+    --bg-card: rgba(255, 255, 255, 0.85);
+    --fg: #182026;
+    --muted: #64748b;
+    --line: rgba(24, 32, 38, 0.13);
+    --hero: #e11d48;
+    --ov: #d97706;       /* 踩他车：琥珀烈金 */
+    --ov-bg: rgba(217, 119, 6, 0.12);
+    --by: #0891b2;       /* 被他车踩：电光青紫 */
+    --by-bg: rgba(8, 145, 178, 0.12);
+    --accent: #0f766e;
+
+    --r0: #2b6cb0;
+    --r1: #0d9488;
+    --r2: #9b2c2c;
+    --r3: #8c857b;
+
+    --bLand: #f3f1e9;
+    --bWater: #d7e4e8;
+    --bRiver: #bfd4db;
+    --bUrban: #eae6dc;
+    --bShade: #6e685f;
+    --bLit: #ffffff;
+    --bShadeK: 0.24;
+    --stFill: #ffffff;
+  }
+
+  html.dark {
+    --bg: #080d18;
+    --bg-panel: rgba(11, 17, 30, 0.92);
+    --bg-card: rgba(19, 28, 46, 0.88);
+    --fg: #f1f5f9;
+    --muted: #94a3b8;
+    --line: rgba(255, 255, 255, 0.11);
+    --hero: #ff2e63;
+    --ov: #fbbf24;       /* 踩他车：流光亮金 */
+    --ov-bg: rgba(251, 191, 36, 0.14);
+    --by: #22d3ee;       /* 被他车踩：赛博青蓝 */
+    --by-bg: rgba(34, 211, 238, 0.14);
+    --accent: #38bdf8;
+
+    --r0: #38bdf8;
+    --r1: #2dd4bf;
+    --r2: #f87171;
+    --r3: #475569;
+
+    --bLand: #080d18;
+    --bWater: #051524;
+    --bRiver: #0a243c;
+    --bUrban: #0f172a;
+    --bShade: #000000;
+    --bLit: #1e293b;
+    --bShadeK: 0.35;
+    --stFill: #1e293b;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--fg);
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+    user-select: none;
+  }
+
+  /* ===== 16:9 舞台主网格 ===== */
+  #stage {
+    width: 100vw;
+    height: 100vh;
+    display: grid;
+    grid-template-rows: 68px 1fr 205px;
+    grid-template-columns: 1fr 410px;
+    background: var(--bg);
+  }
+
+  /* ===== 1. 顶部仪表盘顶栏 ===== */
+  #header {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg-panel);
+    z-index: 1200;
+    gap: 14px;
+  }
+
+  .h-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+  }
+  .hero-badge-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 12px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, rgba(255, 46, 99, 0.18), rgba(251, 191, 36, 0.10));
+    border: 1px solid rgba(255, 46, 99, 0.45);
+  }
+  #hdr-code {
+    font: 900 26px/1 "DIN Alternate", "Bahnschrift", ui-monospace, monospace;
+    letter-spacing: 0.02em;
+    color: var(--hero);
+  }
+  .hero-od-block {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  #hdr-od {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--fg);
+    white-space: nowrap;
+  }
+  #hdr-meta {
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  #hdr-emu-wrap {
+    display: flex;
+     flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 2px 8px;
+    border-left: 1px solid var(--line);
+  }
+  #hdr-emu-svg {
+    height: 22px;
+    display: flex;
+    align-items: center;
+  }
+  #hdr-emu-name {
+    font-size: 10.5px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  /* 预设车次与搜索栏 */
+  .h-center {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+  .preset-pill {
+    padding: 4px 9px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--bg-card);
+    color: var(--fg);
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .preset-pill:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+  }
+  .preset-pill.active {
+    background: var(--hero);
+    border-color: var(--hero);
+    color: #fff;
+    box-shadow: 0 2px 10px rgba(255, 46, 99, 0.35);
+  }
+  .preset-pill small {
+    opacity: 0.78;
+    font-weight: 500;
+    font-size: 10px;
+  }
+
+  .search-wrap {
+    position: relative;
+    margin-left: 4px;
+  }
+  #train-search {
+    width: 138px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--bg-card);
+    color: var(--fg);
+    font: 600 12px inherit;
+    outline: none;
+  }
+  #train-search:focus {
+    border-color: var(--accent);
+    width: 170px;
+  }
+  #search-suggest {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    width: 250px;
+    max-height: 280px;
+    overflow-y: auto;
+    background: var(--bg-panel);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+    z-index: 3000;
+    display: none;
+  }
+  .sug-item {
+    padding: 6px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+  }
+  .sug-item:hover {
+    background: rgba(56, 189, 248, 0.15);
+  }
+  .sug-item b { color: var(--ov); }
+  .sug-item span { color: var(--muted); font-size: 11px; }
+
+  /* 右侧实时遥测与时钟 */
+  .h-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .tele-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .tele-label {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+  .tele-val {
+    font: 800 17px/1.15 "DIN Alternate", "Bahnschrift", ui-monospace, monospace;
+    color: var(--fg);
+    font-variant-numeric: tabular-nums;
+  }
+  #tele-speed {
+    color: var(--ov);
+  }
+  .clock-box {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding-left: 10px;
+    border-left: 1px solid var(--line);
+  }
+  #clock {
+    font: 800 32px/1 "DIN Alternate", "Bahnschrift", ui-monospace, monospace;
+    color: var(--fg);
+    font-variant-numeric: tabular-nums;
+    min-width: 84px;
+    text-align: right;
+  }
+  #clock-day {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(56, 189, 248, 0.16);
+    color: var(--accent);
+  }
+
+  /* ===== 2. 主地图区與双核心计分板浮层 ===== */
+  #main-area {
+    grid-column: 1;
+    grid-row: 2;
+    position: relative;
+    overflow: hidden;
+    border-right: 1px solid var(--line);
+  }
+  #map {
+    position: absolute;
+    inset: 0;
+    background: var(--bLand);
+  }
+  .leaflet-control-attribution { display: none !important; }
+
+  /* 左上角：双核心大计分牌（踩了多少车 & 被多少车踩） */
+  #dual-scoreboard {
+    position: absolute;
+    top: 14px;
+    left: 16px;
+    z-index: 950;
+    display: flex;
+    gap: 12px;
+    pointer-events: auto;
+  }
+  .score-card {
+    min-width: 205px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: var(--bg-panel);
+    backdrop-filter: blur(10px);
+    border: 1.5px solid var(--line);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .score-card.ov-card {
+    border-left: 4px solid var(--ov);
+  }
+  .score-card.by-card {
+    border-left: 4px solid var(--by);
+  }
+  .score-card.pulse-ov {
+    transform: scale(1.04);
+    box-shadow: 0 0 26px rgba(251, 191, 36, 0.55);
+  }
+  .score-card.pulse-by {
+    transform: scale(1.04);
+    box-shadow: 0 0 26px rgba(34, 211, 238, 0.55);
+  }
+  .sc-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+  }
+  .ov-card .sc-head { color: var(--ov); }
+  .by-card .sc-head { color: var(--by); }
+  .sc-main {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin: 2px 0;
+  }
+  .sc-num {
+    font: 900 36px/1 "DIN Alternate", "Bahnschrift", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .ov-card .sc-num { color: var(--ov); }
+  .by-card .sc-num { color: var(--by); }
+  .sc-tot {
+    font: 700 15px/1 "DIN Alternate", "Bahnschrift", ui-monospace, monospace;
+    color: var(--muted);
+  }
+  .sc-sub {
+    display: flex;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .sc-sub b { color: var(--fg); }
+  .sc-bar-bg {
+    width: 100%;
+    height: 4px;
+    background: var(--line);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 2px;
+  }
+  .sc-bar-fill {
+    height: 100%;
+    width: 0%;
+    transition: width 0.2s ease;
+  }
+  .ov-card .sc-bar-fill { background: var(--ov); }
+  .by-card .sc-bar-fill { background: var(--by); }
+
+  /* 顶部中央：智能变速状态横幅（巡航 / 越行慢镜特写） */
+  #warp-hud {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    z-index: 950;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    pointer-events: none;
+  }
+  #speed-mode-badge {
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--bg-panel);
+    backdrop-filter: blur(8px);
+    border: 1.5px solid var(--line);
+    font: 800 13px/1.2 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+    color: var(--fg);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.25s ease;
+  }
+  #speed-mode-badge.bullet-ov {
+    background: rgba(217, 119, 6, 0.92);
+    border-color: #fde68a;
+    color: #fff;
+    box-shadow: 0 0 24px rgba(251, 191, 36, 0.65);
+    transform: scale(1.04);
+  }
+  #speed-mode-badge.bullet-by {
+    background: rgba(8, 145, 178, 0.92);
+    border-color: #a5f3fc;
+    color: #fff;
+    box-shadow: 0 0 24px rgba(34, 211, 238, 0.65);
+    transform: scale(1.04);
+  }
+  #live-status-pill {
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: var(--bg-panel);
+    border: 1px solid var(--line);
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+
+  /* 地图底部悬浮：导播控制条 */
+  #control-bar {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 960;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--bg-panel);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--line);
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.32);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  #control-bar button, #control-bar select, #control-bar a {
+    background: var(--bg-card);
+    color: var(--fg);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font: 600 11.5px inherit;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.15s ease;
+  }
+  #control-bar button:hover, #control-bar select:hover, #control-bar a:hover {
+    border-color: var(--accent);
+  }
+  #control-bar button.on {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #080d18;
+    font-weight: 800;
+  }
+  #control-bar button.warp-on {
+    background: linear-gradient(135deg, #f59e0b, #ea580c);
+    border-color: #fbbf24;
+    color: #fff;
+    font-weight: 800;
+  }
+  .ctrl-sep {
+    width: 1px;
+    height: 16px;
+    background: var(--line);
+    margin: 0 2px;
+  }
+
+  /* ===== 3. 左下：随车滚动微观运行图 ===== */
+  #diagram-area {
+    grid-column: 1;
+    grid-row: 3;
+    border-top: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+    background: var(--bg-panel);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+  .dg-header {
+    height: 28px;
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+    font-size: 11.5px;
+  }
+  .dg-title {
+    font-weight: 700;
+    color: var(--fg);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .dg-legend {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .dg-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .dg-canvas-wrap {
+    flex: 1;
+    position: relative;
+    cursor: crosshair;
+  }
+  #dg-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* ===== 4. 右侧：踩车 & 被踩实时战绩流 ===== */
+  #right-sidebar {
+    grid-column: 2;
+    grid-row: 2 / 4;
+    background: var(--bg-panel);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .sb-header {
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .sb-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sb-title {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--fg);
+  }
+  .sb-summary {
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .sb-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .sb-tab {
+    padding: 5px 6px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--bg-card);
+    color: var(--muted);
+    font: 700 11.5px inherit;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s ease;
+  }
+  .sb-tab.active {
+    color: var(--fg);
+    border-color: var(--accent);
+    background: rgba(56, 189, 248, 0.14);
+  }
+  .sb-tab.ov-tab.active {
+    color: var(--ov);
+    border-color: var(--ov);
+    background: var(--ov-bg);
+  }
+  .sb-tab.by-tab.active {
+    color: var(--by);
+    border-color: var(--by);
+    background: var(--by-bg);
+  }
+
+  #battle-feed {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    scroll-behavior: smooth;
+  }
+  .ev-card {
+    padding: 8px 11px;
+    border-radius: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-left: 3.5px solid var(--muted);
+    cursor: pointer;
+    transition: all 0.18s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .ev-card:hover {
+    transform: translateX(-2px);
+    border-color: var(--accent);
+  }
+  .ev-card.type-ov {
+    border-left-color: var(--ov);
+  }
+  .ev-card.type-by {
+    border-left-color: var(--by);
+  }
+  .ev-card.future {
+    opacity: 0.52;
+  }
+  .ev-card.active-now {
+    opacity: 1;
+    transform: scale(1.015);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.32);
+  }
+  .ev-card.type-ov.active-now {
+    background: var(--ov-bg);
+    border-color: var(--ov);
+  }
+  .ev-card.type-by.active-now {
+    background: var(--by-bg);
+    border-color: var(--by);
+  }
+
+  .ev-row1 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .ev-badge {
+    padding: 1.5px 6px;
+    border-radius: 4px;
+    font: 800 10.5px/1.3 ui-monospace, monospace;
+  }
+  .type-ov .ev-badge {
+    background: var(--ov-bg);
+    color: var(--ov);
+    border: 1px solid rgba(251, 191, 36, 0.35);
+  }
+  .type-by .ev-badge {
+    background: var(--by-bg);
+    color: var(--by);
+    border: 1px solid rgba(34, 211, 238, 0.35);
+  }
+  .ev-station {
+    font-weight: 800;
+    font-size: 13px;
+    color: var(--fg);
+  }
+  .ev-time {
+    font: 700 12px ui-monospace, monospace;
+    color: var(--muted);
+    margin-left: auto;
+  }
+
+  .ev-row2 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .ev-target {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .ev-target-code {
+    font: 800 14px/1 "DIN Alternate", "Bahnschrift", ui-monospace, monospace;
+    color: var(--fg);
+  }
+  .ev-target-od {
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ev-emu-mini {
+    height: 16px;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .ev-row3 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .ev-reason {
+    font-weight: 600;
+  }
+  .type-ov .ev-reason { color: var(--ov); }
+  .type-by .ev-reason { color: var(--by); }
+
+  .empty-feed {
+    padding: 36px 16px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+
+  /* 加载遮罩 */
+  #loading-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: opacity 0.35s ease;
+  }
+  #loading-mask.done {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .ld-title {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+  }
+  .ld-sub {
+    font-size: 13px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<div id="loading-mask">
+  <div class="ld-title">一镜到底 · 跟车越行纪实视角</div>
+  <div class="ld-sub" id="ld-status">正在加载全国列车运行图与轨道几何…</div>
+</div>
+
+<div id="stage">
+  <!-- 1. 顶栏 -->
+  <header id="header">
+    <div class="h-left">
+      <div class="hero-badge-box">
+        <span id="hdr-code">G37</span>
+        <div class="hero-od-block">
+          <div id="hdr-od">北京南 → 杭州东</div>
+          <div id="hdr-meta">1478 km · 全程 5h39m</div>
+        </div>
+      </div>
+      <div id="hdr-emu-wrap">
+        <div id="hdr-emu-svg"></div>
+        <div id="hdr-emu-name">CR400BF-Z · 复兴号智能动车组</div>
+      </div>
+    </div>
+
+    <!-- 预设典型车次与搜索 -->
+    <div class="h-center">
+      <button class="preset-pill active" data-train="G37">G37 <small>京沪标杆 踩17/被2</small></button>
+      <button class="preset-pill" data-train="G897">G897 <small>京港动卧 踩12/被0</small></button>
+      <button class="preset-pill" data-train="Z16">Z16 <small>京哈直特 踩17/被0</small></button>
+      <button class="preset-pill" data-train="Z235">Z235 <small>南北直特 踩22+</small></button>
+      <button class="preset-pill" data-train="K973">K973 <small>待避苦旅 踩2/被15</small></button>
+      <button class="preset-pill" data-train="G1230">G1230 <small>跨线均衡</small></button>
+      <div class="search-wrap">
+        <input id="train-search" type="text" placeholder="🔍 搜索任意车次…" autocomplete="off">
+        <div id="search-suggest"></div>
+      </div>
+    </div>
+
+    <!-- 右侧实时遥测 -->
+    <div class="h-right">
+      <div class="tele-item">
+        <span class="tele-label">当前线路 / 限速</span>
+        <span class="tele-val" id="tele-line">京沪高铁 · 350</span>
+      </div>
+      <div class="tele-item">
+        <span class="tele-label">实时时速</span>
+        <span class="tele-val" id="tele-speed">0 km/h</span>
+      </div>
+      <div class="tele-item">
+        <span class="tele-label">已行里程</span>
+        <span class="tele-val" id="tele-km">0 / 1478 km</span>
+      </div>
+      <div class="clock-box">
+        <span id="clock-day">当日</span>
+        <span id="clock">07:52</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- 2. 主地图视口 -->
+  <main id="main-area">
+    <div id="map"></div>
+
+    <!-- 左上角：双核心数据计分板（踩了多少车 & 被多少车踩） -->
+    <div id="dual-scoreboard">
+      <div class="score-card ov-card" id="card-ov">
+        <div class="sc-head">
+          <span>⚡ 踩了多少车（越行他车）</span>
+          <span>OVERTAKEN</span>
+        </div>
+        <div class="sc-main">
+          <span class="sc-num" id="ov-cur">0</span>
+          <span class="sc-tot">/ 全程 <b id="ov-tot">0</b> 趟</span>
+        </div>
+        <div class="sc-sub" id="ov-sub">
+          <span>办客让行 <b>0</b></span>
+          <span>·</span>
+          <span>技术待避 <b>0</b></span>
+        </div>
+        <div class="sc-bar-bg"><div class="sc-bar-fill" id="ov-bar"></div></div>
+      </div>
+
+      <div class="score-card by-card" id="card-by">
+        <div class="sc-head">
+          <span>💥 被多少车踩（让行他车）</span>
+          <span>OVERTAKEN BY</span>
+        </div>
+        <div class="sc-main">
+          <span class="sc-num" id="by-cur">0</span>
+          <span class="sc-tot">/ 全程 <b id="by-tot">0</b> 趟</span>
+        </div>
+        <div class="sc-sub" id="by-sub">
+          <span>办客被超 <b>0</b></span>
+          <span>·</span>
+          <span>技术让行 <b>0</b></span>
+        </div>
+        <div class="sc-bar-bg"><div class="sc-bar-fill" id="by-bar"></div></div>
+      </div>
+    </div>
+
+    <!-- 右上角：智能变速导播状态指示 -->
+    <div id="warp-hud">
+      <div id="speed-mode-badge">🚀 巡航倍速 · 120×</div>
+      <div id="live-status-pill">准备发车</div>
+    </div>
+
+    <!-- 底部中央：导播控制条 -->
+    <div id="control-bar">
+      <select id="date-sel" title="选择运行图日期"></select>
+      <button id="btn-play" class="on" title="播放/暂停 (Space)">❚❚ 暂停</button>
+      <button id="btn-prev-ev" title="跳至上一个踩车/被踩事件 ([)">⏮ 上一交锋</button>
+      <button id="btn-next-ev" title="跳至下一个踩车/被踩事件 (])">⏭ 下一交锋</button>
+      <span class="ctrl-sep"></span>
+      <button id="btn-warp" class="warp-on" title="越行/被超前自动降速慢镜特写并推近镜头 (W)">🎬 智能变速 ON</button>
+      <button data-spd="60" title="巡航 1秒=1分钟">60×</button>
+      <button data-spd="120" class="on" title="巡航 1秒=2分钟">120×</button>
+      <button data-spd="240" title="巡航 1秒=4分钟">240×</button>
+      <span class="ctrl-sep"></span>
+      <button id="btn-cam" class="on" title="镜头自动锁定跟车与变焦 (C)">🎯 自动跟车</button>
+      <button id="btn-theme" title="切换暗黑战术屏 / 图纸米白主题 (T)">主题</button>
+      <a id="link-map" href="index.html#G37" target="_blank" title="在全国地图中查看该车次">地图 ↗</a>
+      <a id="link-dg" href="diagram.html#京沪高速线&G37" target="_blank" title="在单线运行图中查看该车次">运行图 ↗</a>
+    </div>
+  </main>
+
+  <!-- 3. 左下：随车微观运行图 + 全程进度轴 -->
+  <section id="diagram-area">
+    <div class="dg-header">
+      <div class="dg-title">
+        <span>📈 随车时空运行图（点击任意位置跳转时刻）</span>
+        <button id="btn-dg-mode" style="background:var(--bg-card);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:1px 7px;font-size:11px;cursor:pointer;">切换：全程总览 / 随车放大窗</button>
+      </div>
+      <div class="dg-legend">
+        <span><i style="display:inline-block;width:12px;height:3px;background:var(--hero);border-radius:2px"></i>本车运行线</span>
+        <span><i style="display:inline-block;width:12px;height:2px;background:var(--ov)"></i>⚡ 踩车越行点</span>
+        <span><i style="display:inline-block;width:12px;height:2px;background:var(--by)"></i>💥 被踩让行点</span>
+        <span><i style="display:inline-block;width:12px;height:2px;border-bottom:2px dashed var(--muted)"></i>车站/待避停靠</span>
+      </div>
+    </div>
+    <div class="dg-canvas-wrap">
+      <canvas id="dg-canvas"></canvas>
+    </div>
+  </section>
+
+  <!-- 4. 右侧：踩车 & 被踩实时战绩榜 -->
+  <aside id="right-sidebar">
+    <div class="sb-header">
+      <div class="sb-title-row">
+        <span class="sb-title">全程交锋战报流</span>
+        <span class="sb-summary" id="sb-summary">点击任一记录可慢镜回放</span>
+      </div>
+      <div class="sb-tabs">
+        <button class="sb-tab active" data-filter="all" id="tab-all">全部 (0)</button>
+        <button class="sb-tab ov-tab" data-filter="ov" id="tab-ov">⚡ 踩他车 (0)</button>
+        <button class="sb-tab by-tab" data-filter="by" id="tab-by">💥 被他车踩 (0)</button>
+      </div>
+    </div>
+    <div id="battle-feed"></div>
+  </aside>
+</div>
+
+<script src="emu_icons.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// ===== 全局状态 =====
+let DATES = null, curDate = null, D = null;
+window.G = [];
+let ST = [], STBY = {}, AUX = [];
+let RAILS_HI = null, RAILS_LO = null;
+
+let heroTr = null;
+let heroModel = null;       // { totalKm, tStart, tEnd, pts, hSegs, hStops, overtakes, overtakenBy, allEvents, neighborLines }
+let T = 472;
+let playing = true;
+let baseSpeed = 120;        // 巡航倍速（1秒 = 2分钟）
+let curSpeed = 120;         // 实时倍速（智能变速下自动插值到 18×）
+let autoWarp = true;        // 智能变速开关
+let autoCam = true;         // 自动跟车变焦开关
+let dgFullMode = false;     // false=随车滚动放大窗, true=全程总览
+let feedFilter = 'all';     // 'all' | 'ov' | 'by'
+let theme = 'dark';
+let curCamZoom = 9.3;
+let lastActiveEvIdx = -1;
+let pulseOvUntil = 0, pulseByUntil = 0;
+
+// ===== 时间格式化 =====
+function fmtClock(m, withDay = false) {
+  const dayOffset = Math.floor(m / 1440);
+  const mod = ((Math.floor(m) % 1440) + 1440) % 1440;
+  const hh = String(Math.floor(mod / 60)).padStart(2, '0');
+  const mm = String(mod % 60).padStart(2, '0');
+  if (!withDay || dayOffset <= 0) return `${hh}:${mm}`;
+  return `${dayOffset === 1 ? '次日' : `D+${dayOffset}`} ${hh}:${mm}`;
+}
+
+function dayLabel(m) {
+  const d = Math.floor(m / 1440);
+  return d <= 0 ? '当日' : d === 1 ? '次日' : `第${d + 1}日`;
+}
+
+// ===== 底图创建 =====
+const BASE_TILES = {
+  omt: "https://tiles.openfreemap.org/planet",
+  dem: "https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png"
+};
+const makeBaseStyle = () => ({
+  version: 8,
+  sources: {
+    omt: { type: 'vector', url: BASE_TILES.omt },
+    dem: { type: 'raster-dem', encoding: 'terrarium', tileSize: 256, maxzoom: 12, tiles: [BASE_TILES.dem] },
+  },
+  layers: [
+    { id: 'land', type: 'background', paint: { 'background-color': css('--bLand') } },
+    { id: 'hills', type: 'hillshade', source: 'dem',
+      paint: { 'hillshade-exaggeration': +css('--bShadeK'), 'hillshade-shadow-color': css('--bShade'),
+               'hillshade-highlight-color': css('--bLit'), 'hillshade-accent-color': css('--bShade'),
+               'hillshade-illumination-direction': 315 } },
+    { id: 'urban', type: 'fill', source: 'omt', 'source-layer': 'landuse', minzoom: 8,
+      filter: ['in', ['get', 'class'], ['literal', ['residential', 'commercial', 'industrial', 'retail']]],
+      paint: { 'fill-color': css('--bUrban') } },
+    { id: 'water', type: 'fill', source: 'omt', 'source-layer': 'water', paint: { 'fill-color': css('--bWater') } },
+    { id: 'river', type: 'line', source: 'omt', 'source-layer': 'waterway', minzoom: 7,
+      filter: ['in', ['get', 'class'], ['literal', ['river', 'canal']]],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': css('--bRiver'),
+               'line-width': ['interpolate', ['exponential', 1.4], ['zoom'], 6, 0.5, 10, 1.3, 14, 3] } },
+  ],
+});
+
+const map = L.map('map', {
+  preferCanvas: true,
+  zoomControl: false,
+  attributionControl: false,
+  zoomSnap: 0.05
+}).setView([36.5, 117.0], 9.2);
+
+const baseLayer = L.maplibreGL({ style: makeBaseStyle(), interactive: false }).addTo(map);
+
+map.on('dragstart', () => {
+  if (autoCam) {
+    autoCam = false;
+    $('btn-cam').classList.remove('on');
+    $('btn-cam').textContent = '🔓 自由视角';
+  }
+});
+
+function applyTheme(next) {
+  theme = next;
+  document.documentElement.classList.toggle('dark', theme === 'dark');
+  try { baseLayer.getMaplibreMap().setStyle(makeBaseStyle()); } catch (e) {}
+  if (railLayer.c) railLayer.redraw();
+  drawAll();
+}
+
+// ===== 路网底图层 =====
+function parseRails(rj) {
+  const lines = Array.isArray(rj) ? rj : rj.lines, d4 = !Array.isArray(rj) && rj.enc === 'd4';
+  let x = 0, y = 0;
+  const rails = lines.map(([cls, f, ni, sg]) => {
+    let pts;
+    if (d4) {
+      pts = new Float32Array(f.length);
+      for (let j = 0; j < f.length; j += 2) { x += f[j]; y += f[j + 1]; pts[j] = x / 1e4; pts[j + 1] = y / 1e4; }
+    } else pts = Float32Array.from(f);
+    let w = 180, e = -180, s = 90, n = -90;
+    for (let j = 0; j < pts.length; j += 2) {
+      w = Math.min(w, pts[j]); e = Math.max(e, pts[j]);
+      s = Math.min(s, pts[j + 1]); n = Math.max(n, pts[j + 1]);
+    }
+    return { cls, pts, bbox: [w, s, e, n], ni: ni ?? -1, single: sg ? 1 : 0 };
+  });
+  const aux = (Array.isArray(rj) ? [] : rj.aux || []).map(([name, lon, lat, kind, ax, ay, lns, sw]) => ({
+    name, lon, lat, kind, ax, ay, lines: lns || [], sw
+  }));
+  return { rails, aux };
+}
+
+const RailLayer = L.Layer.extend({
+  onAdd(m) {
+    this.c = L.DomUtil.create('canvas', '');
+    this.c.style.position = 'absolute';
+    this.c.style.pointerEvents = 'none';
+    m.getPanes().overlayPane.appendChild(this.c);
+    m.on('moveend zoomend resize viewreset', this.redraw, this);
+    this.redraw();
+  },
+  redraw() {
+    if (!this.c) return;
+    const s = map.getSize(), dpr = devicePixelRatio || 1;
+    L.DomUtil.setPosition(this.c, map.containerPointToLayerPoint([0, 0]));
+    this.c.width = s.x * dpr; this.c.height = s.y * dpr;
+    this.c.style.width = s.x + 'px'; this.c.style.height = s.y + 'px';
+    const ctx = this.c.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const RAILS = RAILS_HI || RAILS_LO || [];
+    if (!RAILS.length) return;
+
+    const b = map.getBounds().pad(0.08);
+    const W = b.getWest(), E = b.getEast(), S = b.getSouth(), N = b.getNorth();
+    const z0 = map.getZoom();
+    const origin = map.getPixelOrigin(), topLeft = map.containerPointToLayerPoint([0, 0]);
+
+    const width = [2.0, 1.6, 1.2, 0.85];
+    const colors = [css('--r0'), css('--r1'), css('--r2'), css('--r3')];
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.globalAlpha = theme === 'dark' ? 0.42 : 0.55;
+
+    for (const cls of [3, 2, 1, 0]) {
+      for (const sg of [0, 1]) {
+        ctx.strokeStyle = colors[cls];
+        ctx.lineWidth = width[cls] * (sg ? 0.65 : 1);
+        ctx.beginPath();
+        for (const r of RAILS) {
+          if (r.cls !== cls || r.single !== sg) continue;
+          if (r.bbox[2] < W || r.bbox[0] > E || r.bbox[3] < S || r.bbox[1] > N) continue;
+          const p = r.pts;
+          for (let j = 0; j < p.length; j += 2) {
+            const q = map.project([p[j + 1], p[j]], z0);
+            const x = q.x - origin.x - topLeft.x, y = q.y - origin.y - topLeft.y;
+            j ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+          }
+        }
+        ctx.stroke();
+      }
+    }
+  }
+});
+
+const OverlayLayer = L.Layer.extend({
+  onAdd(m) {
+    this.c = L.DomUtil.create('canvas', '');
+    this.c.style.position = 'absolute';
+    this.c.style.pointerEvents = 'none';
+    m.getPanes().overlayPane.appendChild(this.c);
+    m.on('move zoom resize viewreset', this.reset, this);
+    this.reset();
+  },
+  reset() {
+    const s = map.getSize(), dpr = devicePixelRatio || 1;
+    L.DomUtil.setPosition(this.c, map.containerPointToLayerPoint([0, 0]));
+    this.c.width = s.x * dpr; this.c.height = s.y * dpr;
+    this.c.style.width = s.x + 'px'; this.c.style.height = s.y + 'px';
+    this.ctx = this.c.getContext('2d');
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+});
+
+const railLayer = new RailLayer();
+const overlayLayer = new OverlayLayer();
+
+// ===== 几何解码与运动学插值 =====
+const GEO_CACHE = new Map();
+function decodeGeo(geo) {
+  const f = geo.pts, n = f.length / 2, X = new Float64Array(n), Y = new Float64Array(n);
+  for (let i = 0, x = 0, y = 0; i < n; i++) { x += f[2 * i]; y += f[2 * i + 1]; X[i] = x / 1e5; Y[i] = y / 1e5; }
+  const G = geo.geoms.map((r, gi) => {
+    let m = 0;
+    for (let a = 1; a < r.length; a += 2) m += Math.abs(r[a]);
+    const km = new Float64Array(m), lon = new Float64Array(m), lat = new Float64Array(m);
+    for (let a = 0, j = 0, prev = 0; a < r.length; a += 2) {
+      const s = prev + r[a], L = r[a + 1], d = L < 0 ? -1 : 1;
+      for (let t = 0; t < Math.abs(L); t++, j++) { const p = s + d * t; lon[j] = X[p]; lat[j] = Y[p]; }
+      prev = s + d * (Math.abs(L) - 1);
+    }
+    if (geo.gkm) { const dk = geo.gkm[gi]; for (let j = 0, k = 0; j < m; j++) { k += dk[j]; km[j] = k / 1e4; } }
+    else {
+      const [k0, len] = geo.gk[gi], c = Math.cos(lat[0] * Math.PI / 180);
+      for (let j = 1; j < m; j++) km[j] = km[j - 1] + Math.hypot((lon[j] - lon[j - 1]) * c, lat[j] - lat[j - 1]);
+      const tot = m > 1 ? km[m - 1] : 0;
+      for (let j = 0; j < m; j++) km[j] = (k0 + len * (tot > 0 ? km[j] / tot : m > 1 ? j / (m - 1) : 0)) / 1e4;
+    }
+    return { km, lon, lat };
+  });
+  geo.pts = geo.geoms = geo.gkm = geo.gk = null;
+  return { G, geo };
+}
+
+function preloadGeo(url) {
+  if (!url) return null;
+  if (!GEO_CACHE.has(url)) {
+    const p = fetch(url).then(r => r.json()).then(decodeGeo);
+    p.catch(() => GEO_CACHE.delete(url));
+    GEO_CACHE.set(url, p);
+  }
+  return GEO_CACHE.get(url);
+}
+
+async function expandGeo(data) {
+  if (!data.geo) return data;
+  const { G: gArr, geo } = await preloadGeo(data.geo);
+  Object.assign(data, {
+    _G: gArr, glines: geo.glines, gmember: geo.gmember,
+    line_names: geo.line_names, member_sets: geo.member_sets,
+    profiles: data.profiles || geo.profiles,
+    profile_scale: data.profile_scale ?? geo.profile_scale
+  });
+  return data;
+}
+
+function mergeRest(main, rest) {
+  const off = main.profiles.length, a = main.split.a, n = main.trains.length + rest.trains.length;
+  for (const t of rest.trains) for (const lg of t.l) if (lg) lg[4] += off;
+  const trains = new Array(n), isA = new Uint8Array(n);
+  a.forEach((i, k) => { trains[i] = main.trains[k]; isA[i] = 1; });
+  for (let i = 0, j = 0; i < n; i++) if (!isA[i]) trains[i] = rest.trains[j++];
+  return { ...main, trains, profiles: main.profiles.concat(rest.profiles), split: null };
+}
+
+function geomPos(g, km) {
+  const k = g.km; let lo = 0, hi = k.length - 1;
+  if (km <= k[0]) return [g.lat[0], g.lon[0]];
+  if (km >= k[hi]) return [g.lat[hi], g.lon[hi]];
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (k[m] <= km) lo = m; else hi = m; }
+  const u = (km - k[lo]) / (k[hi] - k[lo] || 1);
+  return [g.lat[lo] + u * (g.lat[hi] - g.lat[lo]), g.lon[lo] + u * (g.lon[hi] - g.lon[lo])];
+}
+
+function at(leg, km) {
+  const g = window.G[leg[0]];
+  if (!g) return null;
+  let k0 = g.km[0], kN = g.km[g.km.length - 1];
+  const k = Math.min(Math.max(km, k0), kN);
+  const h = Math.min(0.45, (kN - k0) / 2 || 0.45);
+  let kb = k - h, ka = k + h;
+  if (kb < k0) { ka += k0 - kb; kb = k0; }
+  if (ka > kN) { kb -= ka - kN; ka = kN; }
+  return { pos: geomPos(g, k), back: geomPos(g, Math.max(k0, kb)), ahead: geomPos(g, Math.min(kN, ka)) };
+}
+
+function legRun(leg, t) {
+  const km = leg[3], ws = leg[5];
+  let t0 = leg[1], s0 = 0, t1 = leg[2], s1 = km, stop0 = true, stop1 = true;
+  if (ws) for (const w of ws) {
+    const sw = w[0] * km, isStop = w[2] > w[1] + 0.05;
+    if (t <= w[1]) { t1 = w[1]; s1 = sw; stop1 = isStop; break; }
+    if (isStop && t <= w[2]) return { km: sw, kmh: 0, waitSt: w[3], waitReason: w[4] };
+    t0 = w[2]; s0 = sw; stop0 = isStop;
+  }
+  const P = D.profiles && D.profiles[leg[4]], SC = D.profile_scale || 10000, dur = leg[2] - leg[1];
+  if (P && P.length >= 4 && dur > 0 && km > 0) {
+    const f = Math.max(0, Math.min(1, (t - leg[1]) / dur)), x = f * SC;
+    let lo = 0, hi = (P.length >> 1) - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (P[m << 1] <= x) lo = m; else hi = m; }
+    const pt0 = P[lo << 1], ps0 = P[(lo << 1) + 1], pt1 = P[hi << 1], ps1 = P[(hi << 1) + 1];
+    const pdt = pt1 - pt0, pds = ps1 - ps0;
+    if (pdt <= 0 || pds <= 0) return { km: ps0 / SC * km, kmh: 0 };
+    const segDt = pdt / SC * dur, segDs = pds / SC * km;
+    const u = Math.max(0, Math.min(segDt, (x - pt0) / SC * dur));
+    const atStop0 = lo === 0 || ps0 === P[((lo - 1) << 1) + 1];
+    const atStop1 = hi === (P.length >> 1) - 1 || ps1 === P[((hi + 1) << 1) + 1];
+    const tau0 = atStop0 ? Math.min(0.6, segDt * 0.35) : 0, tau1 = atStop1 ? Math.min(0.6, segDt * 0.35) : 0;
+    const vm = segDs / (segDt - 0.5 * (tau0 + tau1));
+    const k0 = ps0 / SC * km, k1 = ps1 / SC * km;
+    if (u < tau0) return { km: k0 + vm * (u * u / (2 * tau0)), kmh: vm * 60 * (u / tau0) };
+    if (u > segDt - tau1) { const r = segDt - u; return { km: k1 - vm * (r * r / (2 * tau1)), kmh: vm * 60 * (r / tau1) }; }
+    return { km: k0 + vm * (u - tau0 / 2), kmh: vm * 60 };
+  }
+  const dt = t1 - t0, ds = s1 - s0;
+  if (dt <= 0 || ds <= 0) return { km: s0, kmh: 0 };
+  const u = Math.max(0, Math.min(dt, t - t0));
+  const tau0 = stop0 ? Math.min(1.5, dt * 0.25) : 0, tau1 = stop1 ? Math.min(1.5, dt * 0.25) : 0;
+  const vm = ds / (dt - 0.5 * (tau0 + tau1));
+  if (u < tau0) return { km: s0 + vm * (u * u / (2 * tau0)), kmh: vm * 60 * (u / tau0) };
+  if (u > dt - tau1) { const r = dt - u; return { km: s1 - vm * (r * r / (2 * tau1)), kmh: vm * 60 * (r / tau1) }; }
+  return { km: s0 + vm * (u - tau0 / 2), kmh: vm * 60 };
+}
+
+const TERMINAL_DWELL = 5;
+function stateWithShift(tr, t, sh = 0) {
+  const tLocal = t - sh;
+  const S = tr.s, n = S.length;
+  const start = S[0][2] ?? S[0][1], end = S[n - 1][1] ?? S[n - 1][2];
+  if (start == null || end == null || tLocal < start - TERMINAL_DWELL || tLocal > end + TERMINAL_DWELL) return null;
+  if (tLocal <= start) {
+    const r = tr.l[0] ? at(tr.l[0], 0) : null;
+    return r && { ...r, moving: false, kmh: 0, i: 0, li: 0, km: 0, stName: S[0][0] };
+  }
+  if (tLocal >= end) {
+    const prev = tr.l[n - 2];
+    const r = prev ? at(prev, prev[3]) : null;
+    return r && { ...r, moving: false, kmh: 0, i: n - 1, li: n - 2, km: prev[3], stName: S[n - 1][0] };
+  }
+  for (let i = 0; i < n; i++) {
+    const a = S[i][1] ?? S[i][2], d = S[i][2] ?? S[i][1];
+    if (tLocal >= a && tLocal <= d) {
+      const prev = tr.l[i - 1], next = tr.l[i];
+      const r = prev ? at(prev, prev[3]) : next ? at(next, 0) : null;
+      return r && { ...r, moving: false, kmh: 0, i, li: next ? i : i - 1, km: next ? 0 : prev[3], stName: S[i][0] };
+    }
+    if (i < n - 1) {
+      const leg = tr.l[i], d2 = S[i][2] ?? S[i][1], a2 = S[i + 1][1] ?? S[i + 1][2];
+      if (d2 != null && a2 != null && tLocal > d2 && tLocal < a2) {
+        if (!leg) return null;
+        const run = legRun(leg, tLocal), r = at(leg, run.km);
+        if (!r) return null;
+        return { ...r, moving: run.kmh > 0.5, i, kmh: run.kmh, li: i, km: run.km, waitSt: run.waitSt, waitReason: run.waitReason };
+      }
+    }
+  }
+  return null;
+}
+
+// ===== 核心算法：构建本车空间投影网格并秒级检出「踩了多少车」与「被多少车踩」 =====
+function buildHeroAnalysis(hero) {
+  const pts = [];         // [{km, lon, lat}, ...]
+  const hSegs = [];       // [{t1, t2, k1, k2}, ...]
+  const hStops = [];      // [{km, tIn, tOut, st, reason, lon, lat}, ...]
+  const hLegInfo = [];    // [{kStart, kEnd, gid, lset, lineLabel, spd}, ...]
+  let cum = 0;
+
+  const S = hero.s;
+  for (let i = 0; i < S.length; i++) {
+    const stName = S[i][0];
+    const a = (i === 0 ? S[i][2] : S[i][1]) ?? S[i][2];
+    const dep = (i === S.length - 1 ? S[i][1] : S[i][2]) ?? S[i][1];
+    if (dep > a) {
+      hSegs.push({ t1: a, t2: dep, k1: cum, k2: cum });
+    }
+    const stObj = STBY[stName];
+    hStops.push({
+      km: cum, tIn: a, tOut: dep, st: stName,
+      reason: '办客停站', isCommercial: i > 0 && i < S.length - 1 && dep > a,
+      lon: stObj ? stObj.lon : null, lat: stObj ? stObj.lat : null
+    });
+
+    if (i < hero.l.length && hero.l[i]) {
+      const lg = hero.l[i];
+      const gid = lg[0], t1 = lg[1], t2 = lg[2], lkm = lg[3];
+      const g = window.G[gid];
+      if (!g || !g.km.length) continue;
+      const k0 = g.km[0], m = g.km.length;
+      for (let j = 0; j < m; j++) {
+        pts.push({ km: cum + (g.km[j] - k0), lon: g.lon[j], lat: g.lat[j] });
+      }
+      const span = (g.km[m - 1] - k0) || lkm || 1;
+      const gl = (D.glines && D.glines[gid]) || [];
+      const lset = new Set();
+      let mainLineName = '', mainSpd = 0;
+      for (const seg of gl) {
+        if (seg[1] >= 0 && (gl.length === 1 || seg[0] < 0.92)) {
+          lset.add(seg[1]);
+          if (!mainLineName && D.line_names && D.line_names[seg[1]]) {
+            mainLineName = D.line_names[seg[1]];
+            mainSpd = seg[2] || 0;
+          }
+        }
+      }
+      hLegInfo.push({ kStart: cum, kEnd: cum + span, gid, lset, lineName: mainLineName, spd: mainSpd });
+
+      const ws = lg[5] || [];
+      let curT = t1, curK = cum;
+      for (const w of ws) {
+        const wk = cum + w[0] * span;
+        const wt1 = w[1], wt2 = w[2];
+        if (wt1 > curT) hSegs.push({ t1: curT, t2: wt1, k1: curK, k2: wk });
+        if (wt2 > wt1) {
+          hSegs.push({ t1: wt1, t2: wt2, k1: wk, k2: wk });
+          const pWait = geomPos(g, k0 + w[0] * span);
+          hStops.push({
+            km: wk, tIn: wt1, tOut: wt2, st: w[3] || '区间待避',
+            reason: w[4] || '技术停车', isCommercial: false,
+            lon: pWait[1], lat: pWait[0]
+          });
+        }
+        curT = wt2; curK = wk;
+      }
+      if (t2 > curT) hSegs.push({ t1: curT, t2: t2, k1: curK, k2: cum + span });
+      cum += span;
+    }
+  }
+
+  const totalKm = cum;
+  const tStart = hSegs.length ? hSegs[0].t1 : 0;
+  const tEnd = hSegs.length ? hSegs[hSegs.length - 1].t2 : 1440;
+
+  function heroKmAt(t) {
+    if (t < tStart || t > tEnd) return null;
+    for (let i = 0; i < hSegs.length; i++) {
+      const s = hSegs[i];
+      if (t >= s.t1 && t <= s.t2) {
+        return s.t2 <= s.t1 ? s.k1 : s.k1 + (s.k2 - s.k1) * (t - s.t1) / (s.t2 - s.t1);
+      }
+    }
+    return null;
+  }
+
+  function heroTAt(k) {
+    for (let i = 0; i < hSegs.length; i++) {
+      const s = hSegs[i];
+      if (k >= s.k1 && k <= s.k2 && s.k2 > s.k1) {
+        return s.t1 + (s.t2 - s.t1) * (k - s.k1) / (s.k2 - s.k1);
+      }
+    }
+    return null;
+  }
+
+  function heroPosAtKm(k) {
+    if (!pts.length) return [36.5, 117.0];
+    let lo = 0, hi = pts.length - 1;
+    if (k <= pts[0].km) return [pts[0].lat, pts[0].lon];
+    if (k >= pts[hi].km) return [pts[hi].lat, pts[hi].lon];
+    while (hi - lo > 1) {
+      const m = (lo + hi) >> 1;
+      if (pts[m].km <= k) lo = m; else hi = m;
+    }
+    const u = (k - pts[lo].km) / (pts[hi].km - pts[lo].km || 1);
+    return [pts[lo].lat + u * (pts[hi].lat - pts[lo].lat), pts[lo].lon + u * (pts[hi].lon - pts[lo].lon)];
+  }
+
+  function heroLinesAt(k) {
+    for (const info of hLegInfo) {
+      if (k >= info.kStart - 1.5 && k <= info.kEnd + 1.5) return info.lset;
+    }
+    return null;
+  }
+
+  function heroLineTelemetryAt(k) {
+    for (const info of hLegInfo) {
+      if (k >= info.kStart && k <= info.kEnd + 0.5) return info;
+    }
+    return hLegInfo[0] || { lineName: '国铁干线', spd: 0 };
+  }
+
+  // 构建空间哈希网格 (CELL = 0.15 deg)
+  const CELL = 0.15;
+  const grid = new Map();
+  const STEP = Math.max(1, Math.min(3, Math.floor(pts.length / 500)));
+  for (let idx = 0; idx < pts.length - STEP; idx += STEP) {
+    const p1 = pts[idx], p2 = pts[Math.min(pts.length - 1, idx + STEP)];
+    const gx1 = Math.floor(Math.min(p1.lon, p2.lon) / CELL) - 1;
+    const gx2 = Math.floor(Math.max(p1.lon, p2.lon) / CELL) + 1;
+    const gy1 = Math.floor(Math.min(p1.lat, p2.lat) / CELL) - 1;
+    const gy2 = Math.floor(Math.max(p1.lat, p2.lat) / CELL) + 1;
+    const chord = [p1.km, p1.lon, p1.lat, p2.km, p2.lon, p2.lat];
+    for (let gx = gx1; gx <= gx2; gx++) {
+      for (let gy = gy1; gy <= gy2; gy++) {
+        const key = (gx << 16) ^ (gy & 0xffff);
+        let arr = grid.get(key);
+        if (!arr) { arr = []; grid.set(key, arr); }
+        arr.push(chord);
+      }
+    }
+  }
+
+  function projPoint(lon, lat) {
+    const gx = Math.floor(lon / CELL), gy = Math.floor(lat / CELL);
+    const cands = grid.get((gx << 16) ^ (gy & 0xffff));
+    if (!cands) return null;
+    const kx = 111.32 * Math.cos(lat * Math.PI / 180), ky = 110.54;
+    let bestD = 1.6, bestK = null;
+    for (let i = 0; i < cands.length; i++) {
+      const c = cands[i];
+      const dx = (c[4] - c[1]) * kx, dy = (c[5] - c[2]) * ky;
+      const px = (lon - c[1]) * kx, py = (lat - c[2]) * ky;
+      const l2 = dx * dx + dy * dy;
+      const u = l2 < 1e-9 ? 0 : Math.max(0, Math.min(1, (px * dx + py * dy) / l2));
+      const d = Math.hypot(px - u * dx, py - u * dy);
+      if (d < bestD) {
+        bestD = d;
+        bestK = c[0] + u * (c[3] - c[0]);
+      }
+    }
+    return bestK;
+  }
+
+  const geomCache = new Map();
+  function projGeom(gid) {
+    if (geomCache.has(gid)) return geomCache.get(gid);
+    const g = window.G[gid];
+    if (!g || !g.km.length) { geomCache.set(gid, []); return []; }
+    const n = g.km.length;
+    const gStep = Math.max(1, Math.min(6, Math.floor(n / 35)));
+    const pieces = [];
+    let cur = [];
+    for (let idx = 0; idx < n; idx = (idx < n - 1 && idx + gStep >= n - 1) ? n - 1 : idx + gStep) {
+      const lk = g.km[idx], hk = projPoint(g.lon[idx], g.lat[idx]);
+      if (hk == null) continue;
+      if (!cur.length) {
+        cur.push([lk, hk]);
+      } else {
+        const dlk = lk - cur[cur.length - 1][0];
+        const dhk = hk - cur[cur.length - 1][1];
+        if (dhk >= -0.3 && Math.abs(dhk - dlk) <= Math.max(4.0, dlk * 0.25)) {
+          cur.push([lk, hk]);
+        } else {
+          if (cur.length >= 2 && cur[cur.length - 1][1] - cur[0][1] >= 8.0) pieces.push(cur);
+          cur = [[lk, hk]];
+        }
+      }
+    }
+    if (cur.length >= 2 && cur[cur.length - 1][1] - cur[0][1] >= 8.0) pieces.push(cur);
+    geomCache.set(gid, pieces);
+    return pieces;
+  }
+
+  // 遍历全国车次，检出「踩他车 (overtakes)」与「被他车踩 (overtakenBy)」及共线邻车运行线
+  const overtakes = [];
+  const overtakenBy = [];
+  const neighborLines = [];
+  const seenOv = new Set();
+  const seenBy = new Set();
+
+  const actionableHStops = hStops.filter(hs => hs.tOut > hs.tIn);
+
+  for (const tr of D.trains) {
+    if (tr.c === hero.c || tr.od) continue;
+    const sArr = tr.s;
+    if (!sArr || sArr.length < 2) continue;
+
+    for (const sh of [-1440, 0, 1440]) {
+      const tFirst = (sArr[0][2] ?? sArr[0][1] ?? 0) + sh;
+      const tLast = (sArr[sArr.length - 1][1] ?? sArr[sArr.length - 1][2] ?? 0) + sh;
+      if (tLast < tStart - 30 || tFirst > tEnd + 30) continue;
+
+      const ptsO = [];
+      const oStops = [];
+      let runId = 0;
+
+      for (let li = 0; li < tr.l.length; li++) {
+        const lg = tr.l[li];
+        if (!lg) { runId++; continue; }
+        const gid = lg[0], dep = lg[1] + sh, arr = lg[2] + sh, lkm = lg[3];
+        if (arr < tStart - 60 || dep > tEnd + 60) { runId++; continue; }
+        const pieces = projGeom(gid);
+        if (!pieces.length) { runId++; continue; }
+
+        const gl = (D.glines && D.glines[gid]) || [];
+        const olset = new Set();
+        for (const seg of gl) {
+          if (seg[1] >= 0 && (gl.length === 1 || seg[0] < 0.92)) olset.add(seg[1]);
+        }
+
+        const g = window.G[gid];
+        const g0 = g.km[0], gSpan = (g.km[g.km.length - 1] - g0) || lkm || 1;
+        const ws = lg[5] || [];
+        const lSegs = [];
+        let ct = dep, cs = g0;
+        for (const w of ws) {
+          const wsK = g0 + w[0] * gSpan;
+          const wt1 = w[1] + sh, wt2 = w[2] + sh;
+          if (wt1 > ct) lSegs.push([cs, wsK, ct, wt1]);
+          if (wt2 > wt1) lSegs.push([wsK, wsK, wt1, wt2]);
+          ct = wt2; cs = wsK;
+        }
+        if (arr > ct) lSegs.push([cs, g0 + gSpan, ct, arr]);
+
+        const tAtLocal = sLoc => {
+          for (let z = 0; z < lSegs.length; z++) {
+            const sg = lSegs[z];
+            if (sLoc >= sg[0] - 1e-4 && sLoc <= sg[1] + 1e-4 && sg[1] > sg[0]) {
+              return sg[2] + (sg[3] - sg[2]) * (sLoc - sg[0]) / (sg[1] - sg[0]);
+            }
+          }
+          return dep + (arr - dep) * (sLoc - g0) / gSpan;
+        };
+
+        for (const pc of pieces) {
+          const kStart = pc[0][1];
+          const tPc0 = tAtLocal(pc[0][0]);
+          if (ptsO.length && (ptsO[ptsO.length - 1].runId !== runId || Math.abs(kStart - ptsO[ptsO.length - 1].km) > 5.0)) {
+            runId++;
+          }
+          if (Math.abs(pc[0][0] - g0) < 2.0 && li > 0 && sArr[li][1] != null) {
+            const tArr0 = sArr[li][1] + sh;
+            if (dep > tArr0) {
+              oStops.push({ km: kStart, tIn: tArr0, tOut: dep, st: sArr[li][0], reason: '办客停站' });
+              if (ptsO.length && ptsO[ptsO.length - 1].runId === runId && Math.abs(ptsO[ptsO.length - 1].km - kStart) < 3.5) {
+                ptsO[ptsO.length - 1] = { t: tArr0, km: kStart, st: sArr[li][0], lset: olset, runId };
+              }
+            }
+          }
+          ptsO.push({ t: tPc0, km: kStart, st: Math.abs(pc[0][0] - g0) < 2.0 ? sArr[li][0] : '', lset: olset, runId });
+
+          for (let j = 0; j < pc.length - 1; j++) {
+            const [sA, kA] = pc[j], [sB, kB] = pc[j + 1];
+            for (const w of ws) {
+              const wsK = g0 + w[0] * gSpan;
+              if (wsK > sA && wsK <= sB) {
+                const wk = kA + (kB - kA) * (wsK - sA) / (sB - sA || 1);
+                const wt1 = w[1] + sh, wt2 = w[2] + sh;
+                ptsO.push({ t: wt1, km: wk, st: w[3], lset: olset, runId });
+                if (wt2 > wt1) {
+                  oStops.push({ km: wk, tIn: wt1, tOut: wt2, st: w[3], reason: w[4] || '技术停车' });
+                  ptsO.push({ t: wt2, km: wk, st: w[3], lset: olset, runId });
+                }
+              }
+            }
+            if (j < pc.length - 2 && (j % 3 === 2)) {
+              ptsO.push({ t: tAtLocal(sB), km: kB, st: '', lset: olset, runId });
+            }
+          }
+
+          const kEnd = pc[pc.length - 1][1];
+          ptsO.push({ t: tAtLocal(pc[pc.length - 1][0]), km: kEnd, st: Math.abs(pc[pc.length - 1][0] - (g0 + gSpan)) < 2.0 ? sArr[li + 1][0] : '', lset: olset, runId });
+          if (Math.abs(pc[pc.length - 1][0] - (g0 + gSpan)) < 2.0 && li + 1 < sArr.length - 1 && sArr[li + 1][2] != null) {
+            const tDep1 = sArr[li + 1][2] + sh;
+            if (tDep1 > arr) {
+              oStops.push({ km: kEnd, tIn: arr, tOut: tDep1, st: sArr[li + 1][0], reason: '办客停站' });
+            }
+          }
+          if (Math.abs(pc[pc.length - 1][0] - (g0 + gSpan)) > 2.5) runId++;
+        }
+      }
+
+      if (ptsO.length < 2) continue;
+      neighborLines.push({ tr, sh, pts: ptsO });
+
+      for (let j = 0; j < ptsO.length - 1; j++) {
+        const A = ptsO[j], B = ptsO[j + 1];
+        if (A.runId !== B.runId || B.t < A.t) continue;
+        const hkA = heroKmAt(A.t), hkB = heroKmAt(B.t);
+        if (hkA == null || hkB == null) continue;
+        const dA = A.km - hkA, dB = B.km - hkB;
+
+        // 1) 本车踩他车 (dA > 0.25 -> dB < -0.25)
+        if (dA > 0.25 && dB < -0.25) {
+          const u = dA / (dA - dB);
+          const tC = A.t + u * (B.t - A.t);
+          const kC = A.km + u * (B.km - A.km);
+          const hlset = heroLinesAt(kC);
+          if (hlset && hlset.size && (A.lset.size || B.lset.size)) {
+            let share = false;
+            for (const x of A.lset) if (hlset.has(x)) { share = true; break; }
+            if (!share) for (const x of B.lset) if (hlset.has(x)) { share = true; break; }
+            if (!share) continue;
+          }
+          const cands = oStops.filter(os => Math.abs(os.km - kC) <= 18.0 && tC >= os.tIn - 10 && tC <= os.tOut + 10);
+          if (!cands.length) continue;
+          cands.sort((x, y) => {
+            const inX = (tC >= x.tIn - 1.5 && tC <= x.tOut + 1.5) ? 0 : 1;
+            const inY = (tC >= y.tIn - 1.5 && tC <= y.tOut + 1.5) ? 0 : 1;
+            return inX - inY || Math.abs(x.km - kC) - Math.abs(y.km - kC);
+          });
+          const best = cands[0];
+          const tPass = heroTAt(best.km) ?? tC;
+          const key = `${tr.c}|${Math.round(best.km / 15)}`;
+          if (!seenOv.has(key)) {
+            seenOv.add(key);
+            const ll = heroPosAtKm(best.km);
+            overtakes.push({
+              type: 'ov',
+              t: Math.round(tPass * 10) / 10,
+              km: Math.round(best.km * 10) / 10,
+              tr, sh,
+              code: tr.c,
+              od: `${sArr[0][0]}→${sArr[sArr.length - 1][0]}`,
+              station: best.st,
+              reason: best.reason,
+              dwell: Math.max(1, Math.round(best.tOut - best.tIn)),
+              tIn: best.tIn,
+              tOut: best.tOut,
+              lat: ll[0],
+              lon: ll[1]
+            });
+          }
+        }
+        // 2) 本车被他车踩 (dA < -0.25 -> dB > 0.25)
+        else if (dA < -0.25 && dB > 0.25) {
+          const u = -dA / (dB - dA);
+          const tC = A.t + u * (B.t - A.t);
+          const kC = A.km + u * (B.km - A.km);
+          const hlset = heroLinesAt(kC);
+          if (hlset && hlset.size && (A.lset.size || B.lset.size)) {
+            let share = false;
+            for (const x of A.lset) if (hlset.has(x)) { share = true; break; }
+            if (!share) for (const x of B.lset) if (hlset.has(x)) { share = true; break; }
+            if (!share) continue;
+          }
+          const cands = actionableHStops.filter(hs => Math.abs(hs.km - kC) <= 18.0 && tC >= hs.tIn - 10 && tC <= hs.tOut + 10);
+          if (!cands.length) continue;
+          cands.sort((x, y) => {
+            const inX = (tC >= x.tIn - 1.5 && tC <= x.tOut + 1.5) ? 0 : 1;
+            const inY = (tC >= y.tIn - 1.5 && tC <= y.tOut + 1.5) ? 0 : 1;
+            return inX - inY || Math.abs(x.km - kC) - Math.abs(y.km - kC);
+          });
+          const best = cands[0];
+          const key = `${tr.c}|${Math.round(best.km / 15)}`;
+          if (!seenBy.has(key)) {
+            seenBy.add(key);
+            const ll = heroPosAtKm(best.km);
+            overtakenBy.push({
+              type: 'by',
+              t: Math.round(tC * 10) / 10,
+              km: Math.round(best.km * 10) / 10,
+              tr, sh,
+              code: tr.c,
+              od: `${sArr[0][0]}→${sArr[sArr.length - 1][0]}`,
+              station: best.st,
+              reason: best.reason === '办客停站' ? '办客停站被超' : `${best.reason}让行`,
+              dwell: Math.max(1, Math.round(best.tOut - best.tIn)),
+              tIn: best.tIn,
+              tOut: best.tOut,
+              lat: ll[0],
+              lon: ll[1]
+            });
+          }
+        }
+      }
+    }
+  }
+
+  overtakes.sort((a, b) => a.t - b.t);
+  overtakenBy.sort((a, b) => a.t - b.t);
+  overtakes.forEach((e, idx) => { e.typeIdx = idx + 1; });
+  overtakenBy.forEach((e, idx) => { e.typeIdx = idx + 1; });
+
+  const allEvents = [...overtakes, ...overtakenBy].sort((a, b) => a.t - b.t);
+  allEvents.forEach((e, idx) => { e.allIdx = idx; });
+
+  return {
+    totalKm, tStart, tEnd, pts, hSegs, hStops,
+    overtakes, overtakenBy, allEvents, neighborLines,
+    heroKmAt, heroTAt, heroPosAtKm, heroLineTelemetryAt
+  };
+}
+
+// ===== 选定并初始化追踪车次 =====
+function selectTrain(codeOrTr, resetTime = true) {
+  if (!D) return;
+  let tr = null;
+  if (typeof codeOrTr === 'object' && codeOrTr) {
+    tr = codeOrTr;
+  } else {
+    const q = String(codeOrTr || '').trim().toUpperCase();
+    tr = D.trains.find(t => !t.od && t.c.toUpperCase() === q)
+      || D.trains.find(t => !t.od && t.c.toUpperCase().split('/').includes(q))
+      || D.trains.find(t => !t.od && t.c.toUpperCase().startsWith(q))
+      || D.trains[0];
+  }
+  if (!tr) return;
+  heroTr = tr;
+  heroModel = buildHeroAnalysis(heroTr);
+
+  if (resetTime) {
+    T = heroModel.tStart;
+  }
+  lastActiveEvIdx = -1;
+
+  // 更新顶栏车次信息
+  const sArr = heroTr.s;
+  const origin = sArr[0][0], dest = sArr[sArr.length - 1][0];
+  const durMin = Math.max(1, heroModel.tEnd - heroModel.tStart);
+  const dh = Math.floor(durMin / 60), dm = Math.round(durMin % 60);
+  $('hdr-code').textContent = heroTr.c;
+  $('hdr-od').textContent = `${origin} → ${dest}`;
+  $('hdr-meta').textContent = `${Math.round(heroModel.totalKm)} km · 全程 ${dh}h${String(dm).padStart(2, '0')}m · 停靠 ${sArr.length - 2} 站`;
+
+  const emuInfo = window.resolveEmuModel ? window.resolveEmuModel(heroTr.m, heroTr.c) : null;
+  $('hdr-emu-svg').innerHTML = window.emuSvg ? window.emuSvg(heroTr.m, heroTr.c, 22) : '';
+  $('hdr-emu-name').textContent = heroTr.m
+    ? `${heroTr.m}${emuInfo && emuInfo.series ? ' · ' + emuInfo.series : ''}`
+    : `${emuInfo ? emuInfo.name : '国铁客运列车'}`;
+
+  // 更新预设按钮高亮
+  const baseCodes = heroTr.c.split('/');
+  for (const btn of document.querySelectorAll('.preset-pill')) {
+    btn.classList.toggle('active', baseCodes.includes(btn.dataset.train));
+  }
+
+  // 更新外部复查链接
+  const mainLine = heroModel.heroLineTelemetryAt(heroModel.totalKm * 0.3).lineName || '京沪高铁';
+  $('link-map').href = `index.html#${encodeURIComponent(baseCodes[0])}`;
+  $('link-dg').href = `diagram.html#${encodeURIComponent(mainLine)}&${encodeURIComponent(baseCodes[0])}`;
+  document.title = `${heroTr.c} (${origin}→${dest}) · 踩${heroModel.overtakes.length}车/被踩${heroModel.overtakenBy.length}车 · 跟车纪实`;
+
+  // 更新计分板总数与细分统计
+  const ovComm = heroModel.overtakes.filter(e => e.reason === '办客停站').length;
+  const ovTech = heroModel.overtakes.length - ovComm;
+  $('ov-tot').textContent = heroModel.overtakes.length;
+  $('ov-sub').innerHTML = `<span>办客让行 <b>${ovComm}</b></span><span>·</span><span>技术待避 <b>${ovTech}</b></span>`;
+
+  const byComm = heroModel.overtakenBy.filter(e => e.reason.includes('办客')).length;
+  const byTech = heroModel.overtakenBy.length - byComm;
+  $('by-tot').textContent = heroModel.overtakenBy.length;
+  $('by-sub').innerHTML = `<span>办客被超 <b>${byComm}</b></span><span>·</span><span>技术让行 <b>${byTech}</b></span>`;
+
+  $('tab-all').textContent = `全部 (${heroModel.allEvents.length})`;
+  $('tab-ov').textContent = `⚡ 踩他车 (${heroModel.overtakes.length})`;
+  $('tab-by').textContent = `💥 被他车踩 (${heroModel.overtakenBy.length})`;
+
+  renderBattleFeed();
+
+  // 初始镜头定位
+  const st0 = stateWithShift(heroTr, T, 0);
+  if (st0) {
+    curCamZoom = 9.3;
+    map.setView(st0.pos, curCamZoom, { animate: false });
+  }
+  drawAll();
+  writeHash();
+}
+
+// ===== 渲染右侧战报流 =====
+function renderBattleFeed() {
+  if (!heroModel) return;
+  const box = $('battle-feed');
+  const list = feedFilter === 'ov'
+    ? heroModel.overtakes
+    : feedFilter === 'by'
+      ? heroModel.overtakenBy
+      : heroModel.allEvents;
+
+  if (!list.length) {
+    box.innerHTML = `<div class="empty-feed">${
+      feedFilter === 'by'
+        ? '👑 本车全程一骑绝尘，被踩 0 次！'
+        : feedFilter === 'ov'
+          ? '本车全程未越行其他同向列车'
+          : '全程无同向越行或被越行事件'
+    }</div>`;
+    return;
+  }
+
+  box.innerHTML = list.map(ev => {
+    const isOv = ev.type === 'ov';
+    const badgeTxt = isOv ? `⚡ 踩 #${ev.typeIdx}` : `💥 被踩 #${ev.typeIdx}`;
+    const actionVerb = isOv ? '越行' : '让行';
+    const miniSvg = window.emuHalfSvg ? window.emuHalfSvg(ev.tr.m, ev.code, 16) : '';
+    return `
+      <div class="ev-card type-${ev.type} future" id="ev-card-${ev.allIdx}" data-idx="${ev.allIdx}">
+        <div class="ev-row1">
+          <span class="ev-badge">${badgeTxt}</span>
+          <span class="ev-station">@ ${ev.station}</span>
+          <span class="ev-time">${fmtClock(ev.t, true)} · ${Math.round(ev.km)} km</span>
+        </div>
+        <div class="ev-row2">
+          <div class="ev-target">
+            <span class="ev-target-code">${actionVerb} ${ev.code}</span>
+            <span class="ev-target-od">${ev.od}</span>
+          </div>
+          <div class="ev-emu-mini" title="${ev.tr.m || ''}">${miniSvg}</div>
+        </div>
+        <div class="ev-row3">
+          <span class="ev-reason">${ev.reason}（停靠 ${ev.dwell} 分钟）</span>
+          <span class="ev-state-txt" id="ev-st-${ev.allIdx}">待发生</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  for (const card of box.querySelectorAll('.ev-card')) {
+    card.onclick = () => {
+      const idx = +card.dataset.idx;
+      const ev = heroModel.allEvents[idx];
+      if (!ev) return;
+      T = Math.max(heroModel.tStart, ev.t - 1.4);
+      autoCam = true;
+      $('btn-cam').classList.add('on');
+      $('btn-cam').textContent = '🎯 自动跟车';
+      drawAll();
+      writeHash();
+    };
+  }
+}
+
+// ===== 坐标转换辅助 =====
+function toPx(ll) {
+  const q = map.project(ll, map.getZoom());
+  const o = map.getPixelOrigin();
+  const tl = map.containerPointToLayerPoint([0, 0]);
+  return { x: q.x - o.x - tl.x, y: q.y - o.y - tl.y };
+}
+
+// ===== 绘制彗星拖尾 =====
+function drawTrailOnLeg(ctx, leg, curKm, color, lenKm = 18, width = 5) {
+  const g = window.G[leg[0]];
+  if (!g) return;
+  const k0 = Math.max(g.km[0], curKm - lenKm), k1 = Math.min(g.km[g.km.length - 1], curKm);
+  if (k1 - k0 < 0.2) return;
+  const pHead = toPx(geomPos(g, k1)), pTail = toPx(geomPos(g, k0));
+  const grad = ctx.createLinearGradient(pHead.x, pHead.y, pTail.x, pTail.y);
+  grad.addColorStop(0, color);
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.save();
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  const steps = 10;
+  for (let i = 0; i <= steps; i++) {
+    const p = toPx(geomPos(g, k0 + (k1 - k0) * (i / steps)));
+    i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ===== 主地图 Canvas 渲染 =====
+function renderChaseMap(nowMs) {
+  const ctx = overlayLayer.ctx;
+  if (!ctx || !D || !heroTr || !heroModel) return;
+  const s = map.getSize();
+  ctx.clearRect(0, 0, s.x, s.y);
+
+  const heroSt = stateWithShift(heroTr, T, 0);
+  const heroKm = heroModel.heroKmAt(T) ?? 0;
+
+  // 1. 绘制本车全程走廊轨迹线（未走虚线 + 已走高亮实线）
+  if (heroModel.pts.length > 1) {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // 未走段
+    ctx.strokeStyle = theme === 'dark' ? 'rgba(56, 189, 248, 0.28)' : 'rgba(15, 118, 110, 0.30)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < heroModel.pts.length; i += 4) {
+      const pt = heroModel.pts[i];
+      if (pt.km < heroKm) continue;
+      const p = toPx([pt.lat, pt.lon]);
+      if (!started) { ctx.moveTo(p.x, p.y); started = true; }
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+
+    // 已走段
+    ctx.setLineDash([]);
+    ctx.strokeStyle = theme === 'dark' ? 'rgba(255, 46, 99, 0.65)' : 'rgba(225, 29, 72, 0.65)';
+    ctx.lineWidth = 3.8;
+    ctx.beginPath();
+    started = false;
+    for (let i = 0; i < heroModel.pts.length; i += 3) {
+      const pt = heroModel.pts[i];
+      if (pt.km > heroKm) break;
+      const p = toPx([pt.lat, pt.lon]);
+      if (!started) { ctx.moveTo(p.x, p.y); started = true; }
+      else ctx.lineTo(p.x, p.y);
+    }
+    if (heroSt) {
+      const ph = toPx(heroSt.pos);
+      if (started) ctx.lineTo(ph.x, ph.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 2. 绘制本车沿途停靠站与待避站标注
+  ctx.save();
+  for (const hs of heroModel.hStops) {
+    if (hs.lat == null || hs.lon == null) continue;
+    const p = toPx([hs.lat, hs.lon]);
+    if (p.x < -30 || p.y < -30 || p.x > s.x + 30 || p.y > s.y + 30) continue;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, hs.isCommercial ? 4.2 : 3.2, 0, Math.PI * 2);
+    ctx.fillStyle = css('--stFill');
+    ctx.fill();
+    ctx.lineWidth = hs.isCommercial ? 2 : 1.4;
+    ctx.strokeStyle = hs.isCommercial ? css('--fg') : css('--muted');
+    ctx.stroke();
+
+    ctx.font = `${hs.isCommercial ? '700 12px' : '500 11px'} -apple-system, "PingFang SC", sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = css('--bg');
+    ctx.strokeText(hs.st, p.x + 7, p.y);
+    ctx.fillStyle = hs.isCommercial ? css('--fg') : css('--muted');
+    ctx.fillText(hs.st, p.x + 7, p.y);
+  }
+  ctx.restore();
+
+  // 3. 绘制已完成交锋站点的历史战绩勋章 Pin
+  ctx.save();
+  for (const ev of heroModel.allEvents) {
+    if (T < ev.t) continue;
+    const p = toPx([ev.lat, ev.lon]);
+    if (p.x < -40 || p.y < -40 || p.x > s.x + 40 || p.y > s.y + 40) continue;
+    const isOv = ev.type === 'ov';
+    const col = isOv ? css('--ov') : css('--by');
+
+    // 越行/被超瞬间冲击波光环 (|T - ev.t| <= 2.2)
+    const dt = T - ev.t;
+    if (dt >= 0 && dt <= 2.2) {
+      const u = dt / 2.2;
+      for (const ringOffset of [0, 0.35]) {
+        const ru = Math.min(1, u + ringOffset);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 12 + ru * 58, 0, Math.PI * 2);
+        ctx.strokeStyle = col;
+        ctx.globalAlpha = (1 - ru) * 0.85;
+        ctx.lineWidth = 2.8 * (1 - ru * 0.5);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // 站点小战绩角标
+    const tag = `${isOv ? '⚡踩' : '💥被超'} ${ev.code}`;
+    ctx.font = '700 10.5px -apple-system, "PingFang SC", sans-serif';
+    const tw = ctx.measureText(tag).width + 10;
+    const bx = p.x - tw / 2, by = p.y - 24;
+    ctx.fillStyle = theme === 'dark' ? 'rgba(11, 17, 30, 0.88)' : 'rgba(255, 255, 255, 0.92)';
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, tw, 16, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = col;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(tag, p.x, by + 8);
+  }
+  ctx.restore();
+
+  // 4. 绘制视野内背景其他列车（低透明度营造路网繁忙感）
+  const activeEvTargets = new Map();
+  for (const ev of heroModel.allEvents) {
+    const dt = ev.t - T;
+    if (dt >= -8 && dt <= 18) {
+      activeEvTargets.set(ev.tr.c, { ev, dt });
+    }
+  }
+
+  ctx.save();
+  for (const tr of D.trains) {
+    if (tr === heroTr || activeEvTargets.has(tr.c)) continue;
+    const st = stateWithShift(tr, T, 0);
+    if (!st) continue;
+    const p = toPx(st.pos);
+    if (p.x < -10 || p.y < -10 || p.x > s.x + 10 || p.y > s.y + 10) continue;
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = tr.c.startsWith('G') ? '#38bdf8' : tr.c.startsWith('D') ? '#2dd4bf' : '#f87171';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // 5. 重点绘制「猎物车 (即将被踩)」与「猎手车 (即将踩本车)」及锁定连线
+  const pHero = heroSt ? toPx(heroSt.pos) : null;
+  for (const { ev, dt } of activeEvTargets.values()) {
+    const stO = stateWithShift(ev.tr, T, ev.sh);
+    if (!stO) continue;
+    const pO = toPx(stO.pos);
+    if (pO.x < -60 || pO.y < -60 || pO.x > s.x + 60 || pO.y > s.y + 60) continue;
+
+    const isOv = ev.type === 'ov';
+    const col = isOv ? css('--ov') : css('--by');
+    const isBefore = dt >= -0.4;
+
+    if (stO.moving && ev.tr.l[stO.li]) {
+      drawTrailOnLeg(ctx, ev.tr.l[stO.li], stO.km, col, isOv ? 14 : 24, 4.5);
+    }
+
+    // 与本车的战术雷达锁定虚线
+    if (pHero && dt >= -1.5 && dt <= 14) {
+      ctx.save();
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([5, 5]);
+      ctx.globalAlpha = 0.72;
+      ctx.beginPath();
+      ctx.moveTo(pHero.x, pHero.y);
+      ctx.lineTo(pO.x, pO.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 猎物/猎手准星环与车体圆点
+    ctx.save();
+    const pulseR = 9 + Math.sin(nowMs / 180) * 2.5;
+    if (isBefore) {
+      ctx.beginPath();
+      ctx.arc(pO.x, pO.y, pulseR, 0, Math.PI * 2);
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(pO.x, pO.y, 5.2, 0, Math.PI * 2);
+    ctx.fillStyle = isBefore ? col : css('--muted');
+    ctx.fill();
+    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = '#fff';
+    ctx.stroke();
+
+    // 猎物/猎手悬浮标签
+    const statusTxt = dt > 0.5
+      ? `${isOv ? '🎯 即将被踩' : '⚠️ 后方逼近'} · ${ev.code} (${ev.station} ${ev.reason})`
+      : Math.abs(dt) <= 0.8
+        ? `${isOv ? '⚡ 正在越行!' : '💥 正在超本车!'} · ${ev.code} @ ${ev.station}`
+        : `${isOv ? '✓ 已被超' : '⚡ 已超本车'} · ${ev.code}`;
+    ctx.font = '700 11.5px -apple-system, "PingFang SC", sans-serif';
+    const tw = ctx.measureText(statusTxt).width + 14;
+    const lx = pO.x + 12, ly = pO.y - 10;
+    ctx.fillStyle = theme === 'dark' ? 'rgba(11, 17, 30, 0.92)' : 'rgba(255, 255, 255, 0.94)';
+    ctx.strokeStyle = isBefore ? col : css('--muted');
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(lx, ly - 11, tw, 22, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = isBefore ? col : css('--muted');
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(statusTxt, lx + 7, ly);
+    ctx.restore();
+  }
+
+  // 6. 最后绘制本车（Hero Train）高光流线车体与旗帜铭牌
+  if (heroSt && pHero) {
+    if (heroSt.moving && heroTr.l[heroSt.li]) {
+      drawTrailOnLeg(ctx, heroTr.l[heroSt.li], heroSt.km, css('--hero'), 28, 6.5);
+    }
+
+    ctx.save();
+    // 呼吸光晕
+    const glowR = 14 + Math.sin(nowMs / 200) * 3;
+    const radGrad = ctx.createRadialGradient(pHero.x, pHero.y, 2, pHero.x, pHero.y, glowR * 1.6);
+    radGrad.addColorStop(0, 'rgba(255, 46, 99, 0.65)');
+    radGrad.addColorStop(1, 'rgba(255, 46, 99, 0)');
+    ctx.fillStyle = radGrad;
+    ctx.beginPath();
+    ctx.arc(pHero.x, pHero.y, glowR * 1.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 方向胶囊车体
+    const pb = toPx(heroSt.back), pa = toPx(heroSt.ahead);
+    const ang = Math.atan2(pa.y - pb.y, pa.x - pb.x);
+    ctx.translate(pHero.x, pHero.y);
+    ctx.rotate(ang);
+    ctx.fillStyle = css('--hero');
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.roundRect(-11, -5.5, 22, 11, 5.5);
+    ctx.fill();
+    ctx.stroke();
+    // 车头白色导流箭头
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(7, 0);
+    ctx.lineTo(1, -3);
+    ctx.lineTo(1, 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // 本车 HUD 铭牌
+    ctx.save();
+    const spdStr = heroSt.moving
+      ? `${Math.round(heroSt.kmh)} km/h`
+      : `停靠 ${heroSt.stName || heroSt.waitSt || ''}`;
+    const heroLabel = `★ 本车 ${heroTr.c} · ${spdStr}`;
+    ctx.font = '800 13px -apple-system, "PingFang SC", sans-serif';
+    const hw = ctx.measureText(heroLabel).width + 18;
+    const hx = pHero.x - hw / 2, hy = pHero.y + 16;
+    ctx.fillStyle = css('--hero');
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.roundRect(hx, hy, hw, 24, 6);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(heroLabel, pHero.x, hy + 12);
+    ctx.restore();
+  }
+}
+
+// ===== 绘制左下随车微观运行图 =====
+function renderChaseDiagram() {
+  const canvas = $('dg-canvas');
+  if (!canvas || !heroModel) return;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const dpr = devicePixelRatio || 1;
+  if (canvas.width !== Math.floor(rect.width * dpr) || canvas.height !== Math.floor(rect.height * dpr)) {
+    canvas.width = Math.floor(rect.width * dpr);
+    canvas.height = Math.floor(rect.height * dpr);
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = rect.width, H = rect.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 64, padR = 20, padT = 14, padB = 24;
+  const plotW = Math.max(10, W - padL - padR);
+  const plotH = Math.max(10, H - padT - padB);
+
+  const heroKm = heroModel.heroKmAt(T) ?? 0;
+  let tMin, tMax, kMin, kMax;
+  if (dgFullMode) {
+    tMin = heroModel.tStart - 15;
+    tMax = heroModel.tEnd + 15;
+    kMin = 0;
+    kMax = Math.max(10, heroModel.totalKm);
+  } else {
+    const halfT = 42;
+    tMin = T - halfT;
+    tMax = T + halfT;
+    kMin = Math.max(0, heroKm - 110);
+    kMax = Math.min(heroModel.totalKm, heroKm + 140);
+    if (kMax - kMin < 120) {
+      if (kMin === 0) kMax = Math.min(heroModel.totalKm, 160);
+      else kMin = Math.max(0, kMax - 160);
+    }
+  }
+
+  const xOfT = t => padL + (t - tMin) / (tMax - tMin || 1) * plotW;
+  const yOfK = k => padT + (k - kMin) / (kMax - kMin || 1) * plotH;
+
+  // 1. 绘制水平车站参考线
+  ctx.save();
+  ctx.font = '10.5px -apple-system, "PingFang SC", sans-serif';
+  let lastY = -999;
+  for (const hs of heroModel.hStops) {
+    if (hs.km < kMin || hs.km > kMax) continue;
+    const y = yOfK(hs.km);
+    ctx.strokeStyle = css('--line');
+    ctx.lineWidth = hs.isCommercial ? 1 : 0.6;
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(W - padR, y);
+    ctx.stroke();
+
+    if (Math.abs(y - lastY) >= 13) {
+      ctx.fillStyle = hs.isCommercial ? css('--fg') : css('--muted');
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(hs.st, padL - 6, y);
+      lastY = y;
+    }
+  }
+  ctx.restore();
+
+  // 2. 绘制垂直时间网格线
+  ctx.save();
+  const stepMin = dgFullMode ? 60 : 15;
+  const firstGridT = Math.ceil(tMin / stepMin) * stepMin;
+  ctx.font = '10px ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  for (let gt = firstGridT; gt <= tMax; gt += stepMin) {
+    const x = xOfT(gt);
+    ctx.strokeStyle = css('--line');
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(x, padT);
+    ctx.lineTo(x, padT + plotH);
+    ctx.stroke();
+    ctx.fillStyle = css('--muted');
+    ctx.fillText(fmtClock(gt), x, padT + plotH + 5);
+  }
+  ctx.restore();
+
+  // 裁剪绘图区域
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(padL, padT, plotW, plotH);
+  ctx.clip();
+
+  // 3. 绘制同向邻车运行线（停站/待避水平段用虚线高亮）
+  for (const nb of heroModel.neighborLines) {
+    const pts = nb.pts;
+    ctx.strokeStyle = theme === 'dark' ? 'rgba(148, 163, 184, 0.35)' : 'rgba(100, 116, 139, 0.35)';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    for (let j = 0; j < pts.length - 1; j++) {
+      const A = pts[j], B = pts[j + 1];
+      if (A.runId !== B.runId) continue;
+      if ((A.t < tMin && B.t < tMin) || (A.t > tMax && B.t > tMax)) continue;
+      if ((A.km < kMin && B.km < kMin) || (A.km > kMax && B.km > kMax)) continue;
+      ctx.moveTo(xOfT(A.t), yOfK(A.km));
+      ctx.lineTo(xOfT(B.t), yOfK(B.km));
+    }
+    ctx.stroke();
+  }
+
+  // 4. 绘制本车（Hero）粗运行线
+  ctx.strokeStyle = css('--hero');
+  ctx.lineWidth = 2.8;
+  ctx.beginPath();
+  for (let i = 0; i < heroModel.hSegs.length; i++) {
+    const sg = heroModel.hSegs[i];
+    const x1 = xOfT(sg.t1), y1 = yOfK(sg.k1);
+    const x2 = xOfT(sg.t2), y2 = yOfK(sg.k2);
+    if (i === 0) ctx.moveTo(x1, y1);
+    else ctx.lineTo(x1, y1);
+    ctx.lineTo(x2, y2);
+  }
+  ctx.stroke();
+
+  // 5. 绘制所有「⚡ 踩」与「💥 被踩」交点圆环与车次标注
+  for (const ev of heroModel.allEvents) {
+    if (ev.t < tMin - 5 || ev.t > tMax + 5 || ev.km < kMin - 10 || ev.km > kMax + 10) continue;
+    const x = xOfT(ev.t), y = yOfK(ev.km);
+    const isOv = ev.type === 'ov';
+    const col = isOv ? css('--ov') : css('--by');
+    const passed = T >= ev.t;
+
+    // 越行待避水平框高亮
+    const xIn = xOfT(ev.tIn), xOut = xOfT(ev.tOut);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(xIn, y);
+    ctx.lineTo(xOut, y);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(x, y, passed ? 5 : 3.8, 0, Math.PI * 2);
+    ctx.fillStyle = passed ? col : css('--bg');
+    ctx.fill();
+    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = col;
+    ctx.stroke();
+
+    if (!dgFullMode || heroModel.allEvents.length <= 20) {
+      ctx.font = '700 10.5px ui-monospace, monospace';
+      ctx.fillStyle = col;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(`${isOv ? '⚡' : '💥'}${ev.code}`, x + 6, y - 3);
+    }
+  }
+
+  // 6. 当前时刻扫描竖线 + 本车十字准星
+  const curX = xOfT(T), curY = yOfK(heroKm);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+  ctx.setLineDash([4, 4]);
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(curX, padT);
+  ctx.lineTo(curX, padT + plotH);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.beginPath();
+  ctx.arc(curX, curY, 5.5, 0, Math.PI * 2);
+  ctx.fillStyle = css('--hero');
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#fff';
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// ===== 综合重绘与双计分板更新 =====
+function drawAll(nowMs = performance.now()) {
+  if (!D || !heroTr || !heroModel) return;
+
+  // 1. 时钟与实时遥测
+  $('clock').textContent = fmtClock(T, false);
+  $('clock-day').textContent = dayLabel(T);
+
+  const heroSt = stateWithShift(heroTr, T, 0);
+  const heroKm = heroModel.heroKmAt(T) ?? 0;
+  const lineInfo = heroModel.heroLineTelemetryAt(heroKm);
+  $('tele-line').textContent = `${lineInfo.lineName || '国铁干线'}${lineInfo.spd ? ' · ' + lineInfo.spd : ''}`;
+  $('tele-speed').textContent = `${heroSt ? Math.round(heroSt.kmh) : 0} km/h`;
+  $('tele-km').textContent = `${Math.round(heroKm)} / ${Math.round(heroModel.totalKm)} km`;
+
+  // 2. 统计截至当前时刻 T 的「已踩车数」与「已被踩数」
+  let ovDone = 0, byDone = 0;
+  let activeEv = null;
+  for (const ev of heroModel.allEvents) {
+    if (T >= ev.t) {
+      if (ev.type === 'ov') ovDone++;
+      else byDone++;
+    }
+    if (T >= ev.t - 1.8 && T <= ev.t + 1.0) {
+      if (!activeEv || Math.abs(ev.t - T) < Math.abs(activeEv.t - T)) activeEv = ev;
+    }
+  }
+
+  const prevOv = +$('ov-cur').textContent;
+  const prevBy = +$('by-cur').textContent;
+  $('ov-cur').textContent = ovDone;
+  $('by-cur').textContent = byDone;
+  if (ovDone > prevOv) pulseOvUntil = nowMs + 900;
+  if (byDone > prevBy) pulseByUntil = nowMs + 900;
+  $('card-ov').classList.toggle('pulse-ov', nowMs < pulseOvUntil);
+  $('card-by').classList.toggle('pulse-by', nowMs < pulseByUntil);
+
+  const ovPct = heroModel.overtakes.length ? (ovDone / heroModel.overtakes.length * 100) : 0;
+  const byPct = heroModel.overtakenBy.length ? (byDone / heroModel.overtakenBy.length * 100) : 0;
+  $('ov-bar').style.width = `${ovPct.toFixed(1)}%`;
+  $('by-bar').style.width = `${byPct.toFixed(1)}%`;
+
+  // 3. 更新智能变速 HUD 与当前运行状态
+  const badge = $('speed-mode-badge');
+  badge.classList.remove('bullet-ov', 'bullet-by');
+  if (activeEv && autoWarp) {
+    const isOv = activeEv.type === 'ov';
+    badge.classList.add(isOv ? 'bullet-ov' : 'bullet-by');
+    badge.textContent = isOv
+      ? `🎬 越行慢镜特写 · ${Math.round(curSpeed)}× · 超越 ${activeEv.code} @ ${activeEv.station}`
+      : `🎬 被超慢镜特写 · ${Math.round(curSpeed)}× · 让行 ${activeEv.code} @ ${activeEv.station}`;
+  } else {
+    badge.textContent = autoWarp
+      ? `🚀 智能巡航 · ${Math.round(curSpeed)}×`
+      : `⏩ 定速播放 · ${Math.round(baseSpeed)}×`;
+  }
+
+  if (activeEv) {
+    $('live-status-pill').textContent = activeEv.type === 'ov'
+      ? `⚡ 正在 ${activeEv.station} 越行 ${activeEv.code}（对方${activeEv.reason} ${activeEv.dwell}'）`
+      : `💥 正在 ${activeEv.station} 让行 ${activeEv.code}（本车${activeEv.reason} ${activeEv.dwell}'）`;
+  } else if (heroSt && !heroSt.moving) {
+    $('live-status-pill').textContent = `⏸ 正在停靠 ${heroSt.stName || heroSt.waitSt || '车站'}`;
+  } else {
+    $('live-status-pill').textContent = `🟢 区间正常巡航疾驰`;
+  }
+
+  // 4. 更新右侧战报列表高亮与自动滚动
+  let focusIdx = -1;
+  for (const ev of heroModel.allEvents) {
+    const card = $(`ev-card-${ev.allIdx}`);
+    const stEl = $(`ev-st-${ev.allIdx}`);
+    if (!card) continue;
+    const dt = ev.t - T;
+    const isNow = dt >= -1.2 && dt <= 1.6;
+    const isPast = T >= ev.t;
+    card.classList.toggle('future', !isPast && !isNow);
+    card.classList.toggle('active-now', isNow);
+    if (stEl) {
+      stEl.textContent = isNow
+        ? (ev.type === 'ov' ? '🔥 正在越行!' : '🔥 正在被超!')
+        : isPast
+          ? (ev.type === 'ov' ? '✓ 已完成越行' : '✓ 已完成让行')
+          : `预计 ${Math.max(1, Math.round(dt))} 分钟后`;
+    }
+    if (isNow) focusIdx = ev.allIdx;
+  }
+  if (focusIdx >= 0 && focusIdx !== lastActiveEvIdx) {
+    lastActiveEvIdx = focusIdx;
+    const el = $(`ev-card-${focusIdx}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  // 5. 自动跟车镜头（支持越行时自动推近特写）
+  if (autoCam && heroSt) {
+    const targetZoom = activeEv ? 10.65 : 9.25;
+    curCamZoom += (targetZoom - curCamZoom) * 0.08;
+    map.setView(heroSt.pos, curCamZoom, { animate: false });
+  }
+
+  renderChaseMap(nowMs);
+  renderChaseDiagram();
+}
+
+// ===== 动画主循环（含智能变速子弹时间插值） =====
+let lastFrameMs = performance.now();
+function tick(now) {
+  if (playing && D && heroModel) {
+    let targetSpd = baseSpeed;
+    if (autoWarp) {
+      for (const ev of heroModel.allEvents) {
+        if (T >= ev.t - 1.8 && T <= ev.t + 1.0) {
+          targetSpd = 18; // 子弹时间慢动作：1秒 = 18秒
+          break;
+        }
+      }
+    }
+    curSpeed += (targetSpd - curSpeed) * 0.18;
+    const dtMin = Math.min(0.08, (now - lastFrameMs) / 1000) / 60 * curSpeed;
+    T += dtMin;
+    if (T > heroModel.tEnd + 6) {
+      T = heroModel.tStart;
+      lastActiveEvIdx = -1;
+    }
+    drawAll(now);
+  }
+  lastFrameMs = now;
+  requestAnimationFrame(tick);
+}
+
+// ===== 交互绑定 =====
+function setPlaying(on) {
+  playing = on;
+  lastFrameMs = performance.now();
+  const b = $('btn-play');
+  b.textContent = playing ? '❚❚ 暂停' : '▶ 播放';
+  b.classList.toggle('on', playing);
+}
+$('btn-play').onclick = () => setPlaying(!playing);
+
+$('btn-warp').onclick = () => {
+  autoWarp = !autoWarp;
+  $('btn-warp').classList.toggle('warp-on', autoWarp);
+  $('btn-warp').textContent = autoWarp ? '🎬 智能变速 ON' : '🎬 智能变速 OFF';
+  drawAll();
+};
+
+for (const btn of document.querySelectorAll('#control-bar button[data-spd]')) {
+  btn.onclick = () => {
+    baseSpeed = +btn.dataset.spd;
+    for (const b of document.querySelectorAll('#control-bar button[data-spd]')) {
+      b.classList.toggle('on', b === btn);
+    }
+    if (!playing) setPlaying(true);
+    drawAll();
+  };
+}
+
+$('btn-prev-ev').onclick = () => {
+  if (!heroModel || !heroModel.allEvents.length) return;
+  const prevs = heroModel.allEvents.filter(e => e.t < T - 2.0);
+  const target = prevs.length ? prevs[prevs.length - 1] : heroModel.allEvents[0];
+  T = Math.max(heroModel.tStart, target.t - 1.4);
+  drawAll();
+};
+
+$('btn-next-ev').onclick = () => {
+  if (!heroModel || !heroModel.allEvents.length) return;
+  const next = heroModel.allEvents.find(e => e.t > T + 0.8) || heroModel.allEvents[0];
+  T = Math.max(heroModel.tStart, next.t - 1.4);
+  drawAll();
+};
+
+$('btn-cam').onclick = () => {
+  autoCam = !autoCam;
+  $('btn-cam').classList.toggle('on', autoCam);
+  $('btn-cam').textContent = autoCam ? '🎯 自动跟车' : '🔓 自由视角';
+  if (autoCam) drawAll();
+};
+
+$('btn-theme').onclick = () => applyTheme(theme === 'dark' ? 'light' : 'dark');
+
+$('btn-dg-mode').onclick = () => {
+  dgFullMode = !dgFullMode;
+  renderChaseDiagram();
+};
+
+// 点击底部运行图直接跳转时刻
+$('dg-canvas').addEventListener('click', e => {
+  if (!heroModel) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const padL = 64, padR = 20;
+  const plotW = Math.max(10, rect.width - padL - padR);
+  const u = Math.max(0, Math.min(1, (x - padL) / plotW));
+  if (dgFullMode) {
+    const tMin = heroModel.tStart - 15, tMax = heroModel.tEnd + 15;
+    T = Math.max(heroModel.tStart, Math.min(heroModel.tEnd, tMin + u * (tMax - tMin)));
+  } else {
+    T = Math.max(heroModel.tStart, Math.min(heroModel.tEnd, (T - 42) + u * 84));
+  }
+  drawAll();
+  writeHash();
+});
+
+// 预设车次切换
+for (const btn of document.querySelectorAll('.preset-pill')) {
+  btn.onclick = () => selectTrain(btn.dataset.train, true);
+}
+
+// 右侧战报 Tab 过滤
+for (const tab of document.querySelectorAll('.sb-tab')) {
+  tab.onclick = () => {
+    feedFilter = tab.dataset.filter;
+    for (const t of document.querySelectorAll('.sb-tab')) t.classList.toggle('active', t === tab);
+    renderBattleFeed();
+    drawAll();
+  };
+}
+
+// 搜索任意车次
+const searchInput = $('train-search');
+const suggestBox = $('search-suggest');
+searchInput.addEventListener('input', () => {
+  if (!D) return;
+  const q = searchInput.value.trim().toUpperCase();
+  if (!q) { suggestBox.style.display = 'none'; return; }
+  const matches = [];
+  for (const t of D.trains) {
+    if (t.od) continue;
+    if (t.c.toUpperCase().includes(q)) {
+      matches.push(t);
+      if (matches.length >= 16) break;
+    }
+  }
+  if (!matches.length) {
+    suggestBox.style.display = 'none';
+    return;
+  }
+  suggestBox.innerHTML = matches.map(t => {
+    const s = t.s;
+    return `<div class="sug-item" data-code="${t.c}">
+      <b>${t.c}</b>
+      <span>${s[0][0]} → ${s[s.length - 1][0]}</span>
+    </div>`;
+  }).join('');
+  suggestBox.style.display = 'block';
+  for (const item of suggestBox.querySelectorAll('.sug-item')) {
+    item.onclick = () => {
+      suggestBox.style.display = 'none';
+      searchInput.value = '';
+      selectTrain(item.dataset.code, true);
+    };
+  }
+});
+
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const q = searchInput.value.trim();
+    if (q) {
+      suggestBox.style.display = 'none';
+      searchInput.value = '';
+      selectTrain(q, true);
+    }
+  }
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap')) suggestBox.style.display = 'none';
+});
+
+addEventListener('keydown', e => {
+  if (e.target.closest('input, select')) return;
+  if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
+  else if (e.code === 'BracketRight') { $('btn-next-ev').click(); }
+  else if (e.code === 'BracketLeft') { $('btn-prev-ev').click(); }
+  else if (e.code === 'KeyW') { $('btn-warp').click(); }
+  else if (e.code === 'KeyC') { $('btn-cam').click(); }
+  else if (e.code === 'KeyT') { $('btn-theme').click(); }
+  else if (e.code === 'ArrowRight') { e.preventDefault(); T = Math.min(heroModel ? heroModel.tEnd : 1440, T + 5); drawAll(); }
+  else if (e.code === 'ArrowLeft') { e.preventDefault(); T = Math.max(heroModel ? heroModel.tStart : 0, T - 5); drawAll(); }
+});
+
+// ===== URL Hash 同步 =====
+function parseHash() {
+  const raw = decodeURIComponent(location.hash.slice(1)).trim();
+  const out = {};
+  if (!raw) return out;
+  for (const part of raw.split('&')) {
+    if (!part) continue;
+    const eq = part.indexOf('=');
+    if (eq < 0) {
+      out.train = part.trim();
+      continue;
+    }
+    const k = part.slice(0, eq).trim().toLowerCase();
+    const v = part.slice(eq + 1).trim();
+    if (k === 'train' || k === 'tr') out.train = v;
+    else if (k === 'date' || k === 'd') out.date = v;
+    else if (k === 'time' || k === 't') {
+      if (v.includes(':')) {
+        const [hh, mm] = v.split(':').map(Number);
+        if (!isNaN(hh) && !isNaN(mm)) out.time = hh * 60 + mm;
+      } else if (!isNaN(+v)) out.time = +v;
+    } else if (k === 'theme') out.theme = v === 'light' ? 'light' : 'dark';
+  }
+  return out;
+}
+
+function writeHash() {
+  if (!heroTr) return;
+  const code = heroTr.c.split('/')[0];
+  const parts = [code];
+  if (DATES && curDate && curDate !== DATES.default) parts.push('date=' + curDate);
+  if (theme === 'light') parts.push('theme=light');
+  const h = parts.join('&');
+  if (h !== decodeURIComponent(location.hash.slice(1))) {
+    history.replaceState(null, '', '#' + h);
+  }
+}
+
+addEventListener('hashchange', () => {
+  const h = parseHash();
+  if (h.train && (!heroTr || !heroTr.c.split('/').includes(h.train.toUpperCase()))) {
+    selectTrain(h.train, true);
+  }
+  if (h.time != null) { T = h.time; drawAll(); }
+});
+
+// ===== 数据加载 =====
+async function loadDate(date, initTrainCode) {
+  const e = DATES && DATES.dates.find(x => x.date === date);
+  if (!e || !e.selectable || !e.file) return false;
+  $('ld-status').textContent = `正在加载 ${date} 全路时刻表与高精度几何…`;
+  $('loading-mask').classList.remove('done');
+
+  let data = await expandGeo(await (await fetch(e.file)).json());
+  if (data.split) {
+    const rest = await (await fetch(data.split.rest)).json();
+    data = mergeRest(data, rest);
+  }
+  curDate = date;
+  initData(data, initTrainCode);
+
+  if (D.geo_hi && window.G && !window.G.hi) {
+    preloadGeo(D.geo_hi).then(({ G: H }) => {
+      if (H.length === window.G.length) {
+        for (let i = 0; i < H.length; i++) window.G[i] = H[i];
+        window.G.hi = D.geo_hi;
+        if (heroTr) selectTrain(heroTr, false);
+        drawAll();
+      }
+    }).catch(() => {});
+  }
+  return true;
+}
+
+function initData(data, initTrainCode) {
+  D = data;
+  window.G = D._G || D.geoms.map(g => ({
+    km: Float64Array.from(g, p => p[0]),
+    lon: Float64Array.from(g, p => p[1]),
+    lat: Float64Array.from(g, p => p[2]),
+  }));
+  STBY = {};
+  ST = (D.stations || []).map(([name, lon, lat, n, code, ele]) => (
+    STBY[name] = { name, lon, lat, n, code, ele: ele ?? null }
+  ));
+  selectTrain(initTrainCode || 'G37', true);
+  $('loading-mask').classList.add('done');
+}
+
+$('date-sel').onchange = e => loadDate(e.target.value, heroTr ? heroTr.c.split('/')[0] : 'G37');
+
+// ===== 启动入口 =====
+(async () => {
+  const h0 = parseHash();
+  if (h0.theme) applyTheme(h0.theme);
+
+  try {
+    const r = await fetch('map_dates.json', { cache: 'no-cache' });
+    if (r.ok) DATES = await r.json();
+  } catch (e) {}
+
+  const railsUrl = (DATES && (DATES.rails || DATES.rails_lo)) || 'map_rails.json';
+  fetch(railsUrl).then(r => r.json()).then(rj => {
+    const { rails, aux } = parseRails(rj);
+    RAILS_HI = RAILS_LO = rails;
+    AUX = aux;
+    railLayer.addTo(map);
+    overlayLayer.addTo(map);
+    map.getPanes().overlayPane.insertBefore(railLayer.c, overlayLayer.c);
+    drawAll();
+  }).catch(() => {});
+
+  const startTrain = h0.train || 'G37';
+  if (DATES && Array.isArray(DATES.dates)) {
+    const ss = DATES.dates.filter(x => x.selectable && x.file);
+    $('date-sel').innerHTML = ss.map(x => `<option value="${x.date}">${x.date}</option>`).join('');
+    const startDate = (h0.date && ss.some(x => x.date === h0.date)) ? h0.date : (DATES.default || ss[ss.length - 1].date);
+    $('date-sel').value = startDate;
+    await loadDate(startDate, startTrain);
+  } else {
+    const data = await expandGeo(await (await fetch('map_data.json')).json());
+    initData(data, startTrain);
+  }
+
+  if (h0.time != null) { T = h0.time; drawAll(); }
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

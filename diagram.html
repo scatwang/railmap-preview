@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script>if (window.parent !== window) document.documentElement.classList.add('embed');   // 嵌在地图分屏里</script>
+<title>列车运行图</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="diagram/diagram.css?v=4ad95c82df">
+</head>
+<body>
+<div id="bar">
+  <b>运行图</b>
+  <button id="dprev" title="前一个可选日期">‹</button>
+  <select id="date" title="日期"></select>
+  <button id="dnext" title="后一个可选日期">›</button>
+  <span id="lqwrap"><input id="lineq" type="text" placeholder="线路（客里表），如 京沪高速线" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search"><button id="lqclr" type="button" title="清空并切换线路">✕</button><ul id="lqsug" role="listbox"></ul></span>
+  <select id="zx" title="支线" style="display:none"></select>
+  <span id="dir" class="seg" title="按本线里程方向显示，两个都亮就是上下行都看"><button data-v="down" class="on" title="下行（里程增加）">下行</button><button data-v="up" class="on" title="上行（里程减少）">上行</button></span>
+  <label id="postLbl" class="note"><input type="checkbox" id="showPost"> 线路所</label>
+  <label class="note"><input type="checkbox" id="showWait" checked> 待避</label>
+  <button id="fitbtn" type="button" title="复位视图（双击图面也可复位）">复位</button>
+  <span id="legend"></span>
+  <span class="note hint">滚轮缩放时间 · Shift+滚轮缩放里程 · 拖动平移 · 双击复位 · 点击车次</span>
+</div>
+<div id="main">
+  <div id="wrap"><canvas id="c"></canvas><div id="loading">加载中…</div></div>
+  <div id="side"></div>
+</div>
+<div id="tip"></div>
+<script src="emu_icons.js?v=11"></script>
+<script src="shared/geo_pack.js?v=585f1382c1"></script>
+<script src="diagram/core.js?v=d56f568db0"></script>
+<script src="diagram/hash.js?v=834e0875ec"></script>
+<script src="diagram/data.js?v=e7dc2382b3"></script>
+<script src="diagram/line.js?v=099d77537e"></script>
+<script src="diagram/draw.js?v=0ddd3a0352"></script>
+<script src="diagram/panel.js?v=98c2e871dc"></script>
+<script src="diagram/interact.js?v=5c9071b3ad"></script>
+</body>
+</html>

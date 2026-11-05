@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>推定限速地图</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<script src="vendor/maplibre-gl.js"></script>
+<style>
+  /* 配色沿用 map.html：浅色 / 深色两套，底图颜色取 CSS 变量 */
+  :root { --bg:#fff; --fg:#222; --muted:#777; --line:#ddd; --sel:#e6007e; --hl:#0891b2;
+          --rail:#b9b6ae; --railHi:#9d9a92; --none:#9aa0a6;
+          --bLand:#f3f2ee; --bWater:#c6d9e6; --bRiver:#a9c6dc; --bUrban:#e4e1da;
+          --bShade:#5f5a50; --bLit:#ffffff; --bShadeK:0.35; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1b1b1b; --fg:#e6e6e6; --muted:#9a9a9a; --line:#3a3a3a; --sel:#ff4fc0; --hl:#22d3ee;
+          --rail:#4a4a48; --railHi:#5a5a57; --none:#6b7075;
+          --bLand:#1f1f1f; --bWater:#14202a; --bRiver:#1c3142; --bUrban:#292927;
+          --bShade:#000000; --bLit:#3a3a3a; --bShadeK:0.45; } }
+  html, body { margin:0; height:100%; overflow:hidden; font:13px system-ui, sans-serif; color:var(--fg); background:var(--bg); }
+  #map { position:absolute; inset:0; }
+  .box { background:var(--bg); border:1px solid var(--line); border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,.12); box-sizing:border-box; }
+  #ctl { position:absolute; left:10px; top:10px; z-index:2; width:330px; max-width:calc(100vw - 20px); padding:8px 10px; }
+  #ctl h1 { margin:0; font-size:16px; font-weight:700; display:flex; align-items:center; gap:8px; }
+  #ctl h1 .fold { margin-left:auto; font:11px system-ui, sans-serif; padding:1px 6px; border:1px solid var(--line); border-radius:4px;
+                  background:none; color:var(--muted); cursor:pointer; }
+  #ctl .sub { color:var(--muted); font-size:11.5px; margin:2px 0 6px; line-height:1.4; }
+  #ctl.folded .body { display:none; }
+  #ctl.folded .sub { margin-bottom:0; }
+  .modes { display:flex; gap:0; border:1px solid var(--line); border-radius:5px; overflow:hidden; margin-bottom:6px; }
+  .modes button { flex:1; font:12px system-ui, sans-serif; padding:4px 2px; border:0; border-left:1px solid var(--line); background:none;
+                  color:var(--fg); cursor:pointer; white-space:nowrap; }
+  .modes button:first-child { border-left:0; }
+  .modes button.on { background:var(--sel); color:#fff; }
+  .row { display:flex; align-items:center; gap:6px; margin:4px 0; flex-wrap:wrap; }
+  #q { flex:1; min-width:0; font:inherit; padding:4px 7px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--fg); }
+  .row button, .row select { font:12px system-ui, sans-serif; padding:3px 7px; border:1px solid var(--line); border-radius:4px;
+                             background:var(--bg); color:var(--fg); cursor:pointer; }
+  .row label { display:inline-flex; align-items:center; gap:3px; cursor:pointer; user-select:none; }
+  #qinfo { color:var(--muted); font-size:11.5px; min-height:15px; }
+  #legend { position:absolute; left:10px; bottom:28px; z-index:2; padding:6px 9px; font-size:11.5px; width:330px; max-width:calc(100vw - 20px); }
+  #legend .t { font-weight:600; margin-bottom:3px; }
+  #legend .bar { height:9px; border-radius:2px; }
+  #legend .ticks { position:relative; height:14px; color:var(--muted); font-size:10.5px; font-variant-numeric:tabular-nums; }
+  #legend .ticks span { position:absolute; transform:translateX(-50%); white-space:nowrap; }
+  #legend .ticks span:first-child { transform:none; }
+  #legend .ticks span:last-child { transform:translateX(-100%); }
+  #legend .ex { color:var(--muted); margin-top:3px; line-height:1.45; }
+  #legend .ex i { display:inline-block; width:18px; height:3px; vertical-align:middle; margin-right:4px; border-radius:2px; }
+  #legend .note { color:var(--muted); margin-top:4px; padding-top:4px; border-top:1px solid var(--line); line-height:1.45; }
+  #tip { position:absolute; z-index:4; display:none; pointer-events:none; padding:6px 8px; font-size:12px; max-width:280px; line-height:1.45; }
+  #panel { position:absolute; right:10px; top:10px; z-index:3; width:320px; max-width:calc(100vw - 20px); max-height:calc(100% - 60px);
+           overflow:auto; padding:10px 12px; display:none; font-size:12.5px; line-height:1.5; }
+  #panel .x { position:absolute; right:10px; top:8px; cursor:pointer; color:var(--muted); }
+  #panel .x:hover { color:var(--fg); }
+  .od { font-size:15px; font-weight:700; padding-right:18px; }
+  .ln { color:var(--muted); }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:1px 10px; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .kv b { font-weight:600; }
+  .kv .k { color:var(--muted); }
+  .sw { display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:-1px; margin-right:3px; }
+  .flag { display:inline-block; font-size:10.5px; border:1px solid var(--line); border-radius:3px; padding:0 4px; margin:0 3px 0 0; color:var(--muted); }
+  .flag.slow { color:#c62828; border-color:#c62828; } .flag.fast { color:#1f5fbf; border-color:#1f5fbf; }
+  table.tau { border-collapse:collapse; margin-top:6px; width:100%; font-variant-numeric:tabular-nums; font-size:12px; }
+  table.tau th { text-align:right; font-weight:normal; color:var(--muted); font-size:11px; padding:1px 4px; border-bottom:1px solid var(--line); }
+  table.tau td { text-align:right; padding:1px 4px; }
+  table.tau th:first-child, table.tau td:first-child { text-align:left; }
+  .links { margin-top:8px; display:flex; gap:10px; flex-wrap:wrap; }
+  .links a { color:var(--hl); }
+  .key { color:var(--muted); font-size:10.5px; margin-top:6px; word-break:break-all; }
+  #loading { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:5; padding:8px 14px; color:var(--muted); }
+  .maplibregl-ctrl-attrib { font-size:10px; }
+  /* 手机：控制框与图例收窄，详情面板改为底部抽屉 */
+  @media (max-width: 640px) {
+    #ctl { width:calc(100vw - 20px); }
+    #legend { width:auto; right:10px; bottom:22px; }
+    #legend .note { display:none; }
+    #panel { left:10px; right:10px; top:auto; bottom:10px; width:auto; max-height:52%; }
+    .maplibregl-ctrl-top-right { top:auto; bottom:120px; }
+  }
+</style>
+</head><body>
+<div id="map"></div>
+<div id="ctl" class="box">
+  <h1>推定限速地图 <button class="fold" id="fold" title="收起 / 展开">收起</button></h1>
+  <div class="sub" id="sub">加载中…</div>
+  <div class="body">
+    <div class="modes" id="srcs" style="margin-bottom:5px">
+      <button data-src="simple" class="on" title="第一阶段由时刻表推区间，第二阶段按弯道与坡道在区间内守恒分配（docs/17）">区间 + 弯道分配</button>
+      <button data-src="lp" title="物理先验剖面 + 分位数回归 LP 反演（docs/16）">先验 + LP 反演</button>
+    </div>
+    <div class="modes" id="modes">
+      <button data-m="implied" class="on" title="分段限速 / 推定限速">分段限速</button>
+      <button data-m="prior" title="区间限速 / 先验限速">区间限速</button>
+      <button data-m="mrel" title="段内比值 / 相对系数">段内比值</button>
+      <button data-m="n" title="直接观测车次数 n_direct">置信度</button>
+    </div>
+    <div class="row">
+      <input id="q" type="search" list="lnlist" placeholder="线名或站名，如 京沪高铁" autocomplete="off">
+      <button id="fit" title="缩放到匹配段">定位</button>
+    </div>
+    <datalist id="lnlist"></datalist>
+    <div id="qinfo"></div>
+    <div class="row">
+      <label title="indirect：两站间没有直接观测；low_confidence：经过车次 &lt; 3"><input type="checkbox" id="weak" checked> 显示间接 / 低置信段（细线半透明）</label>
+    </div>
+    <div class="row">
+      <span>异常：</span>
+      <select id="only">
+        <option value="">全部</option>
+        <option value="anom">只看偏慢 + 偏快</option>
+        <option value="slow">只看偏慢（slow）</option>
+        <option value="fast">只看偏快（fast）</option>
+      </select>
+      <span id="cnt" style="color:var(--muted);font-size:11.5px"></span>
+    </div>
+  </div>
+</div>
+<div id="legend" class="box"></div>
+<div id="tip" class="box"></div>
+<div id="panel" class="box"></div>
+<div id="loading" class="box">加载限速数据…</div>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const okNum = v => typeof v === 'number' && isFinite(v);
+
+// ---------- 色标：每种模式一组 [值, 颜色] 断点；图例与地图样式都从这里生成 ----------
+const KMH_STOPS = [[40, '#67000d'], [60, '#a50f15'], [90, '#e0451f'], [120, '#f28c28'], [160, '#f6bf3a'], [200, '#e9e33b'],
+                   [250, '#3cae4b'], [300, '#17becf'], [350, '#1f4fbf']];
+const MODES = {
+  implied: { field: 'vi', title: '推定限速（km/h）', stops: KMH_STOPS, fmt: v => v },
+  prior:   { field: 'vp', title: '先验限速（km/h）', stops: KMH_STOPS, fmt: v => v },
+  mrel:    { field: 'mr', title: '相对系数 m_rel（1 = 同档典型；红偏慢，蓝偏快）',
+             stops: [[0.5, '#a50026'], [0.7, '#e0513a'], [0.85, '#f9a77a'], [1, '#a9a9a9'], [1.15, '#8cc4e0'], [1.3, '#3f8fd0'], [1.6, '#1f4fbf']],
+             fmt: v => v.toFixed(2) },
+  n:       { field: 'nd', title: '置信度：直接观测车次数 n_direct',
+             stops: [[0, '#b8b8b8'], [1, '#fde725'], [3, '#7ad151'], [10, '#22a884'], [30, '#2a8fb0'], [90, '#6a51c3']],
+             fmt: v => v },
+};
+const colorOf = (mode, v) => {           // 面板色块用：与地图样式同一插值
+  const st = MODES[mode].stops;
+  if (!okNum(v)) return css('--none');
+  if (v <= st[0][0]) return st[0][1];
+  for (let i = 1; i < st.length; i++) if (v <= st[i][0]) {
+    const [a, ca] = st[i - 1], [b, cb] = st[i], t = (v - a) / (b - a);
+    const p = c => [1, 3, 5].map(j => parseInt(c.slice(j, j + 2), 16));
+    const A = p(ca), B = p(cb);
+    return 'rgb(' + A.map((x, j) => Math.round(x + (B[j] - x) * t)).join(',') + ')';
+  }
+  return st[st.length - 1][1];
+};
+
+// ---------- 状态与 URL hash ----------
+// 格式：#src=simple|lp&c=纬度,经度,缩放&m=implied|prior|mrel|n&q=线名&weak=0&only=slow|fast|anom&s=子区间键
+// 也认简写 #京沪高速线（等同 q=京沪高速线）。独立页面，不与 map.html 的 hash 共用。
+const S = { src: 'simple', mode: 'implied', q: '', weak: true, only: '', sel: null, view: null };
+const isSimple = () => (SM ? (SM.method === 'timetable_only' || SM.method === 'lp_merge') : S.src === 'simple');
+const modeTitle = m => {
+  if (!isSimple()) return MODES[m].title;
+  return { implied: '分段限速（km/h，时刻表推区间 + 弯道坡道分配）', prior: '区间限速（km/h，第一阶段纯时刻表推算的整区间均速）',
+           mrel: '段内比值（分段限速 ÷ 区间限速；红 = 弯坡降速，蓝 = 直线提速）', n: '置信度：相邻办客站直达车次数 n_direct' }[m];
+};
+function readHash() {
+  let raw = location.hash.slice(1);
+  if (!raw) return;
+  for (const kv of raw.split('&')) {
+    if (!kv) continue;
+    const i = kv.indexOf('=');
+    let k = i < 0 ? 'q' : kv.slice(0, i), v = i < 0 ? kv : kv.slice(i + 1);
+    try { v = decodeURIComponent(v); } catch (e) {}
+    if (k === 'c') { const [la, lo, z] = v.split(',').map(Number); if ([la, lo, z].every(okNum)) S.view = { lat: la, lon: lo, z }; }
+    else if (k === 'src' && (v === 'simple' || v === 'lp')) S.src = v;
+    else if (k === 'm' && MODES[v]) S.mode = v;
+    else if (k === 'q' || k === 'line') S.q = v.trim();
+    else if (k === 'weak') S.weak = v !== '0';
+    else if (k === 'only' && ['slow', 'fast', 'anom'].includes(v)) S.only = v;
+    else if (k === 's') S.sel = v;
+  }
+}
+let hashTimer = null;
+function writeHash() {
+  clearTimeout(hashTimer);
+  hashTimer = setTimeout(() => {
+    if (!map) return;
+    const c = map.getCenter(), parts = [];
+    if (S.src !== 'simple') parts.push('src=' + S.src);
+    parts.push(`c=${c.lat.toFixed(4)},${c.lng.toFixed(4)},${map.getZoom().toFixed(2)}`);
+    if (S.mode !== 'implied') parts.push('m=' + S.mode);
+    if (S.q) parts.push('q=' + encodeURIComponent(S.q));
+    if (!S.weak) parts.push('weak=0');
+    if (S.only) parts.push('only=' + S.only);
+    if (S.sel != null && SEG[S.sel]) parts.push('s=' + encodeURIComponent(SEG[S.sel].k));
+    const h = '#' + parts.join('&');
+    if (h !== location.hash) history.replaceState(null, '', h);
+  }, 250);
+}
+readHash();
+
+// ---------- 地图：底图样式照搬 map.html（OpenFreeMap 矢量瓦片 + 地形晕渲，只画陆地 / 水体 / 河流 / 建成区） ----------
+// 瓦片地址集中在这一行（与 map.html 同格式；如需换镜像，改这一行即可）
+const BASE_TILES = {"omt":"https://tiles.openfreemap.org/planet","dem":"https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png","attr":"<a href=\"https://openfreemap.org\">OpenFreeMap</a> &copy; OpenMapTiles &copy; OpenStreetMap contributors · 地形 <a href=\"https://registry.opendata.aws/terrain-tiles/\">Mapzen Terrain Tiles</a>"};
+const baseStyle = () => ({
+  version: 8,
+  sources: {
+    omt: { type: 'vector', ...(BASE_TILES.omt.includes('{z}') ? { tiles: [BASE_TILES.omt], maxzoom: 14 } : { url: BASE_TILES.omt }) },
+    dem: { type: 'raster-dem', encoding: 'terrarium', tileSize: 256, maxzoom: 12, tiles: [BASE_TILES.dem] },
+  },
+  layers: [
+    { id: 'land', type: 'background', paint: { 'background-color': css('--bLand') } },
+    { id: 'hills', type: 'hillshade', source: 'dem',
+      paint: { 'hillshade-exaggeration': +css('--bShadeK'), 'hillshade-shadow-color': css('--bShade'),
+               'hillshade-highlight-color': css('--bLit'), 'hillshade-accent-color': css('--bShade'),
+               'hillshade-illumination-direction': 315 } },
+    { id: 'urban', type: 'fill', source: 'omt', 'source-layer': 'landuse', minzoom: 8,
+      filter: ['in', ['get', 'class'], ['literal', ['residential', 'commercial', 'industrial', 'retail']]],
+      paint: { 'fill-color': css('--bUrban') } },
+    { id: 'water', type: 'fill', source: 'omt', 'source-layer': 'water', paint: { 'fill-color': css('--bWater') } },
+    { id: 'river', type: 'line', source: 'omt', 'source-layer': 'waterway', minzoom: 7,
+      filter: ['in', ['get', 'class'], ['literal', ['river', 'canal']]],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': css('--bRiver'), 'line-width': ['interpolate', ['exponential', 1.4], ['zoom'], 6, 0.5, 10, 1.2, 14, 3] } },
+  ],
+});
+const map = new maplibregl.Map({
+  container: 'map', style: baseStyle(),
+  center: S.view ? [S.view.lon, S.view.lat] : [113, 33.5], zoom: S.view ? S.view.z : 4.3,
+  minZoom: 2, maxZoom: 16, dragRotate: false, pitchWithRotate: false, touchPitch: false,
+  // OpenFreeMap 的版权由 TileJSON 自带，这里只补地形与数据说明
+  attributionControl: { customAttribution: '地形 <a href="https://registry.opendata.aws/terrain-tiles/">Mapzen Terrain Tiles</a> · 时刻 12306 · 推定限速为反演结果，非官方信息' },
+});
+map.touchZoomRotate.disableRotation();
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+map.addControl(new maplibregl.ScaleControl({ maxWidth: 110, unit: 'metric' }), 'bottom-right');
+
+// ---------- 路网底图（map_rails_lo.json / map_rails.json，enc "d4" 解码同 map.html；未打包时是纯数组旧格式） ----------
+const RAILS_LO_MAXZ = 6;
+let RAILS = { lo: null, hi: null }, railsHiLoading = false, DATES = null;
+function parseRails(rj) {
+  const lines = Array.isArray(rj) ? rj : rj.lines, d4 = !Array.isArray(rj) && rj.enc === 'd4';
+  let x = 0, y = 0;
+  const feats = [];
+  for (const [cls, f] of lines) {
+    const co = [];
+    if (d4) { for (let j = 0; j < f.length; j += 2) { x += f[j]; y += f[j + 1]; co.push([x / 1e4, y / 1e4]); } }
+    else for (let j = 0; j < f.length; j += 2) co.push([f[j], f[j + 1]]);
+    if (co.length >= 2) feats.push({ type: 'Feature', properties: { c: cls }, geometry: { type: 'LineString', coordinates: co } });
+  }
+  return { gj: { type: 'FeatureCollection', features: feats }, lo: !Array.isArray(rj) && rj.lod === 'lo' };
+}
+const getJSON = u => fetch(u).then(r => { if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); });
+function loadRails() {
+  return getJSON('map_dates.json').catch(() => null).then(d => {
+    DATES = d;
+    return getJSON((d && (d.rails_lo || d.rails)) || 'map_rails.json');
+  }).then(rj => {
+    const { gj, lo } = parseRails(rj);
+    if (lo) RAILS.lo = gj; else RAILS.hi = gj;
+    setRailsData();
+  }).catch(e => console.warn('路网底图加载失败', e));
+}
+function maybeLoadRailsHi() {
+  if (RAILS.hi || railsHiLoading || map.getZoom() <= RAILS_LO_MAXZ || !(DATES && DATES.rails)) return;
+  railsHiLoading = true;
+  getJSON(DATES.rails).then(rj => { RAILS.hi = parseRails(rj).gj; setRailsData(); })
+    .catch(() => { railsHiLoading = false; });
+}
+function setRailsData() {
+  const src = map.getSource && map.getSource('rails');
+  if (!src) return;
+  const gj = (map.getZoom() > RAILS_LO_MAXZ && RAILS.hi) || RAILS.lo || RAILS.hi;
+  if (gj && src._railsRef !== gj) { src.setData(gj); src._railsRef = gj; }
+}
+
+// ---------- 限速数据 ----------
+let SM = null, SEG = [], SEGGJ = null, BYKEY = new Map(), hoverId = null, matched = null;
+const pct = (n, d) => d ? (100 * n / d).toFixed(1) + '%' : '-';
+function buildSegments(sm) {
+  const feats = [], parents = sm.parents || null;
+  SEG = (sm.segments || []).map(raw => (parents && raw.pk && parents[raw.pk]) ? Object.assign({}, parents[raw.pk], raw) : raw);
+  SEG.forEach((s, i) => {
+    BYKEY.set(s.k, i);
+    if (s.pk && !BYKEY.has(s.pk)) BYKEY.set(s.pk, i);
+    const fl = s.flags || [];
+    const co = Array.isArray(s.coords) ? s.coords.filter(p => p && okNum(p[0]) && okNum(p[1])) : [];
+    if (co.length < 2) return;
+    feats.push({ type: 'Feature', id: i, geometry: { type: 'LineString', coordinates: co },
+      properties: { i, line: s.line || '', a: s.a || '', b: s.b || '',
+        vi: okNum(s.kmh_implied) ? s.kmh_implied : null, vp: okNum(s.kmh_prior) ? s.kmh_prior : null,
+        mr: okNum(s.m_rel) ? s.m_rel : null, nd: okNum(s.n_direct) ? s.n_direct : 0,
+        weak: fl.includes('indirect') || fl.includes('low_confidence') ? 1 : 0,
+        slow: fl.includes('slow') ? 1 : 0, fast: fl.includes('fast') ? 1 : 0 } });
+  });
+  SEGGJ = { type: 'FeatureCollection', features: feats };
+  // 线名候选（按段数降序）
+  const cnt = new Map();
+  for (const s of SEG) if (s.line) cnt.set(s.line, (cnt.get(s.line) || 0) + 1);
+  $('lnlist').innerHTML = [...cnt.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => `<option value="${esc(n)}">`).join('');
+  // 统计（控制台，方便排查数据）
+  const n = SEG.length, nul = f => SEG.filter(s => !okNum(s[f])).length;
+  console.info('[speed] 段数', n, '可画', feats.length, 'kmh_implied 空', pct(nul('kmh_implied'), n), 'kmh_prior 空', pct(nul('kmh_prior'), n),
+               'm_rel 空', pct(nul('m_rel'), n));
+}
+function fmtDate(s) { return String(s || '').replace('T', ' ').replace(/\.\d+.*$/, '').replace(/(\d\d:\d\d):\d\d.*$/, '$1'); }
+function setSub() {
+  const ds = (SM.dates || []).slice().sort();
+  const range = ds.length ? (ds.length > 1 ? `${ds[0]} ~ ${ds[ds.length - 1]}（${ds.length} 天）` : ds[0]) : '日期未知';
+  const simp = isSimple(), nInt = SM.stats && SM.stats.segments;
+  const segStr = simp && nInt && nInt !== SEG.length ? `${nInt.toLocaleString()} 区间 → ${SEG.length.toLocaleString()} 小段` : `${SEG.length.toLocaleString()} 段`;
+  const tag = SM.method === 'lp_merge' ? 'LP 反演定区间 + 弯道坡道分配' : simp ? '时刻表推区间 + 弯道坡道分配' : '物理先验 + 图定时刻 LP 反演';
+  $('sub').textContent = `${tag} · ${range} · ${segStr} · 生成于 ${fmtDate(SM.generated_at)}`;
+}
+
+// ---------- 样式表达式 ----------
+const field = () => MODES[S.mode].field;
+function colorExpr() {
+  const f = field(), st = MODES[S.mode].stops;
+  const interp = ['interpolate', ['linear'], ['to-number', ['get', f]]];
+  for (const [v, c] of st) interp.push(v, c);
+  if (S.mode === 'n') return interp;     // n_direct 总有值（缺省 0）
+  return ['case', ['==', ['typeof', ['get', f]], 'number'], interp, css('--none')];
+}
+// 线宽：缩放插值必须在表达式最外层，数据驱动的倍数放进各断点的输出里
+const W_STOPS = [[4, 1.1], [7, 2], [10, 3.2], [13, 5.5], [16, 8]];
+const zoomW = (k, add = 0) => ['interpolate', ['exponential', 1.5], ['zoom'], ...W_STOPS.flatMap(([z, w]) => [z, typeof k === 'number' ? w * k + add : ['+', ['*', w, k], add]])];
+// 上下行是两条同几何反向的记录：按左行习惯往行进方向左侧偏移，放大后能看到两股
+const OFF = ['interpolate', ['exponential', 1.5], ['zoom'], 7, 0, 9, -1.2, 12, -2.6, 16, -4.5];
+const hitList = () => matched ? ['literal', [...matched]] : null;
+function widthExpr() {
+  const hl = hitList();
+  const weakK = ['case', ['==', ['get', 'weak'], 1], 0.55, 1];
+  return zoomW(hl ? ['*', weakK, ['case', ['in', ['get', 'i'], hl], 1.5, 0.8]] : weakK);
+}
+function opacityExpr() {
+  const hl = hitList();
+  const weakO = ['case', ['==', ['get', 'weak'], 1], 0.45, 0.95];
+  return hl ? ['case', ['in', ['get', 'i'], hl], weakO, 0.12] : weakO;
+}
+function filterExpr() {
+  const f = ['all'];
+  if (!S.weak) f.push(['==', ['get', 'weak'], 0]);
+  if (S.only === 'slow') f.push(['==', ['get', 'slow'], 1]);
+  else if (S.only === 'fast') f.push(['==', ['get', 'fast'], 1]);
+  else if (S.only === 'anom') f.push(['any', ['==', ['get', 'slow'], 1], ['==', ['get', 'fast'], 1]]);
+  return f.length > 1 ? f : null;
+}
+
+function addOverlay() {
+  if (!map.getSource('rails')) map.addSource('rails', { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, tolerance: 0.5 });
+  if (!map.getLayer('rails')) map.addLayer({ id: 'rails', type: 'line', source: 'rails', layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['case', ['<=', ['get', 'c'], 1], css('--railHi'), css('--rail')],
+             'line-width': ['interpolate', ['linear'], ['zoom'], 4, ['case', ['<=', ['get', 'c'], 1], 0.6, 0.35],
+                            10, ['case', ['<=', ['get', 'c'], 1], 1.4, 0.9], 14, 2.2] } });
+  setRailsData();
+  if (!SEGGJ || map.getLayer('seg')) return;
+  if (!map.getSource('seg')) map.addSource('seg', { type: 'geojson', data: SEGGJ, tolerance: 0.3 });
+  // 悬停 / 选中的描边在下层，主色线在上层，透明宽线负责拾取
+  map.addLayer({ id: 'seg-case', type: 'line', source: 'seg', layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['case', ['boolean', ['feature-state', 'sel'], false], css('--sel'), css('--fg')],
+             'line-width': zoomW(1, 5), 'line-offset': OFF,
+             'line-opacity': ['case', ['boolean', ['feature-state', 'sel'], false], 0.95, ['boolean', ['feature-state', 'hover'], false], 0.7, 0] } });
+  map.addLayer({ id: 'seg', type: 'line', source: 'seg', layout: { 'line-cap': 'butt', 'line-join': 'round' },
+    paint: { 'line-color': colorExpr(), 'line-width': widthExpr(), 'line-opacity': opacityExpr(), 'line-offset': OFF } });
+  map.addLayer({ id: 'seg-hit', type: 'line', source: 'seg', paint: { 'line-color': '#000', 'line-opacity': 0, 'line-width': 12, 'line-offset': OFF } });
+  applyStyle();
+  if (S.sel != null) map.setFeatureState({ source: 'seg', id: S.sel }, { sel: true });
+}
+function applyStyle() {
+  if (!map.getLayer('seg')) return;
+  map.setPaintProperty('seg', 'line-color', colorExpr());
+  map.setPaintProperty('seg', 'line-width', widthExpr());
+  map.setPaintProperty('seg', 'line-opacity', opacityExpr());
+  const f = filterExpr();
+  for (const id of ['seg', 'seg-case', 'seg-hit']) map.setFilter(id, f);
+  drawLegend();
+  countVisible();
+}
+function countVisible() {
+  if (!SEG.length) return;
+  let n = 0;
+  for (const s of SEG) {
+    const fl = s.flags || [];
+    if (!S.weak && (fl.includes('indirect') || fl.includes('low_confidence'))) continue;
+    if (S.only === 'slow' && !fl.includes('slow')) continue;
+    if (S.only === 'fast' && !fl.includes('fast')) continue;
+    if (S.only === 'anom' && !fl.includes('slow') && !fl.includes('fast')) continue;
+    n++;
+  }
+  $('cnt').textContent = `显示 ${n.toLocaleString()} 段`;
+}
+
+// ---------- 图例 ----------
+function drawLegend() {
+  const md = MODES[S.mode], st = md.stops, n = st.length, simp = isSimple();
+  const grad = st.map(([, c], i) => `${c} ${(100 * i / (n - 1)).toFixed(1)}%`).join(',');
+  const ticks = st.map(([v], i) => `<span style="left:${(100 * i / (n - 1)).toFixed(1)}%">${S.mode === 'implied' || S.mode === 'prior' ? (i === 0 ? '≤' : '') : ''}${md.fmt(v)}</span>`).join('');
+  const note = simp
+    ? '两阶段法：① 纯时刻表扣启停推算两站区间总限速；② 按弯道半径与持续大坡道在区间内守恒分配（切「区间限速」可看分配前整段均速）。'
+    : '推定限速 = 先验 × 相对系数；相对系数按同档典型值归一；n_direct 为直接观测车次数。上下行分画在行进方向左侧（放大可见）。';
+  $('legend').innerHTML = `<div class="t">${esc(modeTitle(S.mode))}</div><div class="bar" style="background:linear-gradient(90deg,${grad})"></div>
+    <div class="ticks">${ticks}</div>
+    <div class="ex">${S.mode !== 'n' ? `<i style="background:${css('--none')}"></i>无数据　` : ''}细线半透明 = 无直达 / 低置信　灰底线 = 路网</div>
+    <div class="note">${note}</div>`;
+}
+
+// ---------- 搜索 ----------
+function runSearch(fit) {
+  const q = S.q.trim();
+  if (!q) { matched = null; $('qinfo').textContent = ''; applyStyle(); return; }
+  const m = new Set(), lines = new Set();
+  const exact = SEG.some(s => s.line === q);
+  SEG.forEach((s, i) => {
+    const hit = exact ? s.line === q : (s.line || '').includes(q) || s.a === q || s.b === q;
+    if (hit) { m.add(i); lines.add(s.line); }
+  });
+  matched = m;
+  $('qinfo').textContent = m.size ? `匹配 ${m.size} 段` + (lines.size <= 3 ? '：' + [...lines].join('、') : `，${lines.size} 条线`) : '没有匹配的段';
+  applyStyle();
+  if (fit && m.size) fitTo([...m], fit === 'instant');
+}
+function fitTo(ids, instant) {
+  let w = 180, e = -180, s = 90, n = -90;
+  for (const i of ids) for (const [x, y] of SEG[i].coords || []) { if (x < w) w = x; if (x > e) e = x; if (y < s) s = y; if (y > n) n = y; }
+  if (w > e) return;
+  const narrow = innerWidth <= 640;
+  map.fitBounds([[w, s], [e, n]], { padding: narrow ? { top: 200, bottom: 80, left: 20, right: 20 } : { top: 40, bottom: 60, left: 360, right: 40 }, maxZoom: 13, duration: instant ? 0 : 600 });
+}
+
+// ---------- 悬停提示与详情面板 ----------
+const f1 = v => okNum(v) ? (Math.round(v * 100) / 100).toString() : '–';
+const kmh = v => okNum(v) ? Math.round(v) + ' km/h' : '–';
+function tauTable(s) {
+  const t = s.tau || {}, tp = s.tau_prior || {};
+  const keys = [...new Set([...Object.keys(t), ...Object.keys(tp)])].sort((a, b) => parseFloat(b) - parseFloat(a));
+  if (!keys.length) return '';
+  const pace = mn => okNum(mn) && mn > 0 && okNum(s.km) ? ` <span style="color:var(--muted)">${Math.round(s.km / mn * 60)}</span>` : '';
+  const h1 = isSimple() ? '推算通–通（分）' : '反演 τ（分）';
+  const h2 = isSimple() ? '直达通–通（分）' : '先验最快（分）';
+  return `<table class="tau"><tr><th>车档</th><th>${h1}</th><th>${h2}</th></tr>` +
+    keys.map(k => `<tr><td>${esc(k)}</td><td>${f1(t[k])}${pace(t[k])}</td><td>${f1(tp[k])}${pace(tp[k])}</td></tr>`).join('') +
+    `</table><div style="color:var(--muted);font-size:10.5px">灰字为折合平均速度 km/h（通–通，不含起停）</div>`;
+}
+function flagsHtml(s) {
+  const name = isSimple()
+    ? { slow: '弯坡降速', fast: '直线提速', indirect: '无相邻停站直达', low_confidence: '低置信', lp_lower_bound: '仅下界', osm_level: '按 OSM' }
+    : { slow: '偏慢', fast: '偏快', indirect: '无直接观测', low_confidence: '低置信', saturated: '饱和' };
+  return (s.flags || []).map(f => `<span class="flag ${esc(f)}" title="${esc(f)}">${esc(name[f] || f)}</span>`).join('') || '<span style="color:var(--muted)">无</span>';
+}
+function bestHtml(s, full) {
+  const b = s.best;
+  if (b && b.src === 'osm') {
+    const orig = s.kmh_simple != null ? ` · 纯时刻表口径 ${esc(s.kmh_simple)} km/h` : '';
+    return `<span class="k">区间来源</span><span>OSM 标注限速（各档车均跑满，时刻表只能给出 ≥ ${esc(b.lb)} km/h；OSM 标注覆盖 ${Math.round((b.osm_share || 0) * 100)}%，最高 ${esc(b.osm_max)}）<span style="color:var(--muted)">${orig}</span></span>`;
+  }
+  if (b && (b.src === 'lp' || b.src === 'lp_lower_bound')) {
+    const lb = b.src === 'lp_lower_bound';
+    const orig = s.kmh_simple != null ? ` · 纯时刻表口径 ${esc(s.kmh_simple)} km/h` : '';
+    return `<span class="k">区间来源</span><span>LP 联合反演（扣编图富余${lb ? '，各档均跑满，仅为下界' : ''}）<span style="color:var(--muted)">${orig}</span></span>`;
+  }
+  if (!b || !b.code) return '';
+  const srcName = { direct: '相邻停站直达', peel: `跨 ${b.via} 站剥离`, express: `跨 ${b.via} 站快车校准`, reverse_fallback: '对向兜底' }[b.src] || b.src;
+  const codeHtml = full ? `<a href="index.html#${encodeURIComponent(b.code)}" target="_blank" rel="noopener" style="color:var(--hl);font-weight:600">${esc(b.code)}</a>` : `<b>${esc(b.code)}</b>`;
+  return `<span class="k">代表车次</span><span>${codeHtml} <span style="color:var(--muted)">${esc(b.from)}→${esc(b.to)} ${b.km}km/${b.min}分 · ${esc(srcName)}</span></span>`;
+}
+function infoHtml(s, full) {
+  const sw = (m, v) => `<span class="sw" style="background:${colorOf(m, v)}"></span>`;
+  const simp = isSimple();
+  const subSpan = simp && Array.isArray(s.part) && okNum(s.skm)
+    ? `本段 ${s.skm.toFixed(2)} km（里程 ${f1(s.s0)}–${f1(s.s1)} / 区间 ${s.km.toFixed(2)} km，第 ${s.part[0]}/${s.part[1]} 段）`
+    : (okNum(s.km) ? s.km.toFixed(2) + ' km' : '–');
+  const facHtml = simp && s.factor ? ` <span style="color:var(--muted)">· ${esc(s.factor)}</span>` : '';
+  const dirHtml = simp && okNum(s.kmh_direct) && s.kmh_direct !== s.kmh_prior ? ` <span style="color:var(--muted)">（直达 ${kmh(s.kmh_direct)}）</span>` : '';
+  let h = `<div class="od">${esc(s.a)} → ${esc(s.b)}</div><div class="ln">${esc(s.line || '（无线名）')} · ${subSpan}</div>
+  <div class="kv">
+    <span class="k">${simp ? '分段限速' : '推定限速'}</span><span>${sw('implied', s.kmh_implied)}<b>${kmh(s.kmh_implied)}</b>${facHtml}</span>
+    <span class="k">${simp ? '区间限速' : '先验限速'}</span><span>${sw('prior', s.kmh_prior)}${kmh(s.kmh_prior)}${dirHtml}</span>
+    <span class="k">${simp ? '段内比值' : 'm / m_rel'}</span><span>${simp ? '' : f1(s.m) + ' / '}${sw('mrel', s.m_rel)}${f1(s.m_rel)}${simp ? ' <span style="color:var(--muted)">（分段 ÷ 区间）</span>' : ''}</span>
+    ${simp ? bestHtml(s, full) : ''}
+    <span class="k">直达 / 总车次</span><span>${okNum(s.n_direct) ? s.n_direct : '–'} / ${okNum(s.n_total) ? s.n_total : '–'}</span>
+    <span class="k">标记</span><span>${flagsHtml(s)}</span>
+  </div>`;
+  h += tauTable(s);
+  if (full) {
+    const ln = s.line ? encodeURIComponent(s.line) : '';
+    h += `<div class="links">${ln ? `<a href="diagram.html#line=${ln}" target="_blank" rel="noopener">运行图：${esc(s.line)}</a>
+      <a href="index.html#line=${ln}" target="_blank" rel="noopener">列车地图</a>` : ''}
+      <a href="#" id="fitsel">缩放到此段</a>${ln ? `<a href="#" id="qsel">筛选此线</a>` : ''}</div>`;
+    const rev = BYKEY.get(`${s.b}→${s.a}|${s.line}`);
+    if (rev != null) h += `<div class="links"><a href="#" id="revsel">看反方向 ${esc(s.b)} → ${esc(s.a)}</a></div>`;
+    const gl = geomKm(s), refKm = okNum(s.skm) ? s.skm : s.km;
+    if (okNum(refKm) && gl > 1.3 * refKm && gl - refKm > 2)   // 折线明显比里程长：多半是几何绕路或断裂，提示一下
+      h += `<div class="key" style="color:#c62828">注意：折线长约 ${gl.toFixed(1)} km，远大于段长 ${refKm.toFixed(2)} km，几何可能有误</div>`;
+    h += `<div class="key">键：${esc(s.k)}</div>`;
+  }
+  return h;
+}
+function geomKm(s) {                     // 折线近似长度（km）
+  const c = s.coords || [];
+  let L = 0;
+  for (let i = 1; i < c.length; i++) {
+    const dx = (c[i][0] - c[i - 1][0]) * 111.32 * Math.cos(c[i][1] * Math.PI / 180), dy = (c[i][1] - c[i - 1][1]) * 110.57;
+    L += Math.hypot(dx, dy);
+  }
+  return L;
+}
+function setHover(id) {
+  if (hoverId === id) return;
+  if (hoverId != null) map.setFeatureState({ source: 'seg', id: hoverId }, { hover: false });
+  hoverId = id;
+  if (id != null) map.setFeatureState({ source: 'seg', id }, { hover: true });
+}
+function select(i, fly) {
+  if (S.sel != null && map.getSource('seg')) map.setFeatureState({ source: 'seg', id: S.sel }, { sel: false });
+  S.sel = i;
+  const p = $('panel');
+  if (i == null || !SEG[i]) { S.sel = null; p.style.display = 'none'; writeHash(); return; }
+  if (map.getSource('seg')) map.setFeatureState({ source: 'seg', id: i }, { sel: true });
+  const s = SEG[i];
+  p.innerHTML = `<span class="x" id="px" title="关闭">✕</span>` + infoHtml(s, true);
+  p.style.display = 'block';
+  $('px').onclick = () => select(null);
+  $('fitsel').onclick = e => { e.preventDefault(); fitTo([i]); };
+  if ($('qsel')) $('qsel').onclick = e => { e.preventDefault(); $('q').value = S.q = s.line; runSearch(true); writeHash(); };
+  if ($('revsel')) $('revsel').onclick = e => { e.preventDefault(); select(BYKEY.get(`${s.b}→${s.a}|${s.line}`)); };
+  if (fly) fitTo([i], fly === 'instant');
+  writeHash();
+}
+function bindEvents() {
+  const tip = $('tip');
+  map.on('mousemove', 'seg-hit', e => {
+    const f = e.features && e.features[0];
+    if (!f) return;
+    setHover(f.id);
+    map.getCanvas().style.cursor = 'pointer';
+    if (matchMedia('(hover: none)').matches) return;
+    tip.innerHTML = infoHtml(SEG[f.id], false);
+    tip.style.display = 'block';
+    const r = map.getContainer().getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
+    let x = e.point.x + 14, y = e.point.y + 14;
+    if (x + tw > r.width - 6) x = e.point.x - tw - 14;
+    if (y + th > r.height - 6) y = Math.max(6, e.point.y - th - 14);
+    tip.style.left = Math.max(6, x) + 'px'; tip.style.top = y + 'px';
+  });
+  map.on('mouseleave', 'seg-hit', () => { setHover(null); tip.style.display = 'none'; map.getCanvas().style.cursor = ''; });
+  map.on('click', e => {
+    const fs = map.getLayer('seg-hit') ? map.queryRenderedFeatures([[e.point.x - 4, e.point.y - 4], [e.point.x + 4, e.point.y + 4]], { layers: ['seg-hit'] }) : [];
+    tip.style.display = 'none';
+    select(fs.length ? fs[0].id : null);
+  });
+  map.on('moveend', () => { writeHash(); maybeLoadRailsHi(); setRailsData(); });
+}
+
+// ---------- 控件 ----------
+const DATA_CACHE = {};
+const dataFileOf = src => src === 'lp' ? 'speed_map.json' : 'speed_simple.json';
+function loadSource(src, firstLoad) {
+  const prevObj = S.sel != null && SEG[S.sel] ? SEG[S.sel] : null;
+  const prevKey = prevObj ? prevObj.k : (typeof S.sel === 'string' ? S.sel : null);
+  const prevParent = prevObj && prevObj.pk ? prevObj.pk : (prevKey ? prevKey.split('#')[0] : null);
+  if (S.sel != null && typeof S.sel === 'number' && map.getSource && map.getSource('seg'))
+    map.setFeatureState({ source: 'seg', id: S.sel }, { sel: false });
+  hoverId = null;
+  const p = DATA_CACHE[src] || (DATA_CACHE[src] = getJSON(dataFileOf(src)));
+  return p.then(sm => {
+    SM = sm;
+    BYKEY = new Map();
+    buildSegments(sm);
+    syncControls();
+    setSub();
+    if (map.getSource && map.getSource('seg')) map.getSource('seg').setData(SEGGJ);
+    else addOverlay();
+    S.sel = null;
+    runSearch(firstLoad && !S.view ? 'instant' : false);
+    const hitIdx = (prevKey && BYKEY.get(prevKey)) ?? (prevParent && BYKEY.get(prevParent));
+    if (hitIdx != null) select(hitIdx, firstLoad && !S.view && !S.q ? 'instant' : false);
+    else select(null);
+    applyStyle();
+  });
+}
+$('srcs').addEventListener('click', e => {
+  const b = e.target.closest('button[data-src]');
+  if (!b || b.dataset.src === S.src) return;
+  S.src = b.dataset.src; syncControls(); loadSource(S.src, false); writeHash();
+});
+$('modes').addEventListener('click', e => {
+  const b = e.target.closest('button[data-m]');
+  if (!b) return;
+  S.mode = b.dataset.m; syncControls(); applyStyle(); writeHash();
+});
+let qTimer = null;
+$('q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(() => { S.q = $('q').value.trim(); runSearch(false); writeHash(); }, 200); });
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(qTimer); S.q = $('q').value.trim(); runSearch(true); writeHash(); } });
+$('fit').onclick = () => { S.q = $('q').value.trim(); runSearch(true); writeHash(); };
+$('weak').onchange = () => { S.weak = $('weak').checked; applyStyle(); writeHash(); };
+$('only').onchange = () => { S.only = $('only').value; applyStyle(); writeHash(); };
+$('fold').onclick = () => { const c = $('ctl').classList.toggle('folded'); $('fold').textContent = c ? '展开' : '收起'; };
+if (innerWidth <= 640 && !S.q) { $('ctl').classList.add('folded'); $('fold').textContent = '展开'; }
+function syncControls() {
+  for (const b of $('srcs').querySelectorAll('button')) b.classList.toggle('on', b.dataset.src === S.src);
+  const simp = isSimple();
+  const labels = simp ? { implied: '分段限速', prior: '区间限速', mrel: '段内比值', n: '置信度' }
+                      : { implied: '推定限速', prior: '先验限速', mrel: '相对系数', n: '置信度' };
+  for (const b of $('modes').querySelectorAll('button')) {
+    b.classList.toggle('on', b.dataset.m === S.mode);
+    if (labels[b.dataset.m]) b.textContent = labels[b.dataset.m];
+  }
+  $('q').value = S.q; $('weak').checked = S.weak; $('only').value = S.only;
+}
+syncControls();
+drawLegend();
+addEventListener('hashchange', () => {
+  const prevSrc = S.src, before = JSON.stringify([S.mode, S.q, S.weak, S.only]);
+  readHash(); syncControls();
+  if (S.src !== prevSrc) loadSource(S.src, false);
+  else if (JSON.stringify([S.mode, S.q, S.weak, S.only]) !== before) runSearch(false);
+});
+
+// ---------- 启动 ----------
+// 用 style.load 而不是 load：瓦片服务器连不上时 load 可能迟迟不触发，叠加层不该等底图瓦片
+const mapReady = new Promise(res => map.once('style.load', res));
+const railsReady = loadRails();
+const dataReady = (DATA_CACHE[S.src] = getJSON(dataFileOf(S.src)).catch(err => {
+  if (S.src === 'simple') { S.src = 'lp'; return (DATA_CACHE.lp = getJSON('speed_map.json')); }
+  throw err;
+}));
+mapReady.then(() => { addOverlay(); bindEvents(); });
+// 深浅主题切换：重建底图样式后再把叠加层加回去
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  map.setStyle(baseStyle(), { diff: false });
+  map.once('style.load', () => { addOverlay(); drawLegend(); });
+});
+Promise.all([dataReady, mapReady]).then(([sm]) => {
+  SM = sm;
+  buildSegments(sm);
+  syncControls();
+  setSub();
+  addOverlay();
+  const selKey = S.sel;
+  S.sel = null;
+  runSearch(S.view ? false : 'instant');
+  if (selKey != null && BYKEY.has(selKey)) select(BYKEY.get(selKey), !S.view && !S.q ? 'instant' : false);
+  $('loading').remove();
+  window.__speedReady = true;
+}).catch(e => {
+  console.error(e);
+  $('loading').textContent = '限速数据加载失败：' + (e && e.message || e);
+  $('sub').textContent = '没有找到限速数据（需先运行 railmap.timetable.speed_limit）';
+});
+</script>
+</body></html>

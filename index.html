@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>列车位置地图</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="vendor/leaflet.min.css">
+<script src="vendor/leaflet.min.js"></script>
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<script src="vendor/maplibre-gl.js"></script>
+<script src="vendor/leaflet-maplibre-gl.js"></script>
+<link rel="stylesheet" href="map/map.css?v=90bd6cb381">
+</head><body>
+<div id="map"></div>
+<div id="bar">
+  <button id="playbtn" title="播放（空格键）">▶</button>
+  <button id="tbtn" type="button" aria-controls="tctl" title="时间控制"><span class="d"></span><b>--:--</b><span class="x"></span><svg class="c" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2.5 7.5L6 4L9.5 7.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  <div id="tctl">
+    <span id="datebox" style="display:none">
+      <button id="dprev" title="前一个有数据的日期">‹</button>
+      <select id="date" title="日期"></select>
+      <button id="dnext" title="后一个有数据的日期">›</button>
+      <span id="dloading">加载中…</span>
+      <span id="dinfo" role="button" tabindex="0" aria-label="当期数据状态与质量指标"></span>
+    </span>
+    <span id="spdbox" title="拖动或按 ↑ ↓ 键调节播放速度：最慢 1秒:1秒（实时），中间 3 挡吸附（1秒:1分钟、1秒:5分钟、1秒:20分钟），最快 1秒:1小时">
+      <span id="spdtop"><span id="spdval">1秒:5分钟</span></span>
+      <span id="spdwrap">
+        <span id="spdticks"><i data-v="60" style="left:calc(7px + (100% - 14px) * 0.25)"></i><i data-v="300" style="left:50%"></i><i data-v="1200" style="left:calc(7px + (100% - 14px) * 0.75)"></i></span>
+        <input id="speed" type="range" min="0" max="1" step="0.001" value="0.5">
+      </span>
+    </span>
+    <span id="clockrow"><button type="button" class="tstep" data-dt="-15">−15′</button><button type="button" class="tstep" data-dt="-1">−1′</button><span id="clock">--:--</span><button type="button" class="tstep" data-dt="1">+1′</button><button type="button" class="tstep" data-dt="15">+15′</button></span>
+    <button id="nowbtn" title="切到北京时间的今天此刻，按 1× 实时播放（快捷键 N）">现在</button>
+    <input id="slider" type="range" min="0" max="1440" step="0.5" value="480">
+    <div id="tattr"></div>
+  </div>
+  <button id="qbtn" type="button" title="搜索车次 / 车站 / 线路" aria-label="搜索"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M13 13l4.5 4.5" stroke-linecap="round"/></svg></button>
+  <div id="qwrap"><div id="qrow"><input id="q" type="text" placeholder="车次/站名，如 G1" size="11" enterkeyhint="search" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"><button id="qcancel" type="button">取消</button></div><ul id="qsug" role="listbox"></ul></div>
+  <button id="dgbtn" title="下半屏显示运行图：选中客里表线路时显示该线，选中车次时显示它当前所在的线路"><span>运行图</span><svg class="chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2.5 7.5L6 4L9.5 7.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  <label>底图 <input id="baseop" type="range" min="0" max="1" step="0.05" style="width:80px"></label>
+  <span id="count"></span>
+  <span id="zoom" style="color:var(--muted)"></span>
+  <div id="tprog" title="拖动调整时刻"><i></i><b></b></div>
+</div>
+<div id="tip"></div><div id="auxtip"></div><div id="dpop"></div>
+<div id="hist"><div class="grp"><button id="histBtn" title="恢复选中"></button><button id="histDd" title="最近选中过的">▾</button></div><ul id="histList"></ul></div>
+<div id="drawer"><div id="dstrip"><div class="tabs"><button id="dtab1" type="button">时刻表</button><button id="dtab2" type="button">运行图</button></div><button id="dclose" type="button" aria-label="关闭">✕</button></div>
+<div id="dpages"><div id="panel"></div>
+<div id="dgwrap"><div id="dgsplit" title="拖动调整高度"></div><div id="dghint">选中一条线路或一趟车，这里显示对应线路的运行图</div><iframe id="dg" title="运行图"></iframe></div>
+</div></div>
+<button id="legbtn" type="button" aria-controls="legend">图例</button>
+<div id="legend">
+  <div class="h"><span>动车组</span><button id="mkbtn" type="button" title="切换列车地图标记：默认经典五边形 / 车型涂装极简色块">涂装</button></div>
+  <div data-lv="W" data-fx="1" hidden>复兴号</div>
+  <div data-lv="S">300+ 高铁</div>
+  <div data-lv="W">200-250</div>
+  <div data-lv="J">动集</div>
+  <div class="h">普速</div>
+  <div data-lv="ZT">Z/T/N 直达·特快</div>
+  <div data-lv="K">K/V 快速</div>
+  <div data-lv="O">普快·其他</div>
+  <div id="legLoco" hidden></div>
+  <div class="h">线路</div>
+  <div><i style="background:var(--r0)"></i>高铁 300–350</div>
+  <div><i style="background:var(--r1)"></i>高铁/城际 200–250</div>
+  <div><i style="background:var(--r2)"></i>普速干线 120–160</div>
+  <div><i style="background:var(--r3)"></i>其他普速</div>
+  <div><i style="background:var(--muted);height:1.5px"></i>细线 = 单线</div>
+  <div><svg width="18" height="10"><path d="M3 9L15 1" stroke="var(--muted)" stroke-width="1.6"/></svg>会让站 / 线路所</div>
+</div>
+<div id="loading">加载数据…</div>
+<script src="emu_icons.js?v=18"></script>
+<!-- 底图瓦片地址：发布时 `python -m railmap.viz.pack --tiles 配置.json` 整行替换，见 map/basemap.js -->
+<script>
+const BASE_TILES = {"omt":"https://tiles.openfreemap.org/planet","dem":"https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png","attr":"<a href=\"https://openfreemap.org\">OpenFreeMap</a> &copy; OpenMapTiles &copy; OpenStreetMap contributors · 地形 <a href=\"https://registry.opendata.aws/terrain-tiles/\">Mapzen Terrain Tiles</a>"};
+</script>
+<script src="shared/geo_pack.js?v=585f1382c1"></script>
+<script src="map/core.js?v=386b6f05cc"></script>
+<script src="map/basemap.js?v=98c871aa7b"></script>
+<script src="map/mobile.js?v=42bf7e4a5e"></script>
+<script src="map/hash.js?v=d8a6cc9c55"></script>
+<script src="map/line_panel.js?v=66540badac"></script>
+<script src="map/motion.js?v=e80b5321ca"></script>
+<script src="map/trains.js?v=70ed781ca1"></script>
+<script src="map/split.js?v=f54d83967a"></script>
+<script src="map/frame.js?v=a5bb3042f2"></script>
+<script src="map/history.js?v=f5191021b9"></script>
+<script src="map/border.js?v=ab15b4a530"></script>
+<script src="map/panels.js?v=3f79c5db33"></script>
+<script src="map/stations.js?v=2756b458a1"></script>
+<script src="map/controls.js?v=26633de9da"></script>
+<script src="map/search.js?v=964528df78"></script>
+<script src="map/dates.js?v=e3e8fb0111"></script>
+</body></html>

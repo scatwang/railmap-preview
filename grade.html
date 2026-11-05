@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>线路坡度地图</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<script src="vendor/maplibre-gl.js"></script>
+<style>
+  /* 布局与配色沿用 speed.html（推定限速地图） */
+  :root { --bg:#fff; --fg:#222; --muted:#777; --line:#ddd; --sel:#e6007e; --hl:#0891b2;
+          --rail:#b9b6ae; --railHi:#9d9a92; --none:#9aa0a6;
+          --bLand:#f3f2ee; --bWater:#c6d9e6; --bRiver:#a9c6dc; --bUrban:#e4e1da;
+          --bShade:#5f5a50; --bLit:#ffffff; --bShadeK:0.35; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1b1b1b; --fg:#e6e6e6; --muted:#9a9a9a; --line:#3a3a3a; --sel:#ff4fc0; --hl:#22d3ee;
+          --rail:#4a4a48; --railHi:#5a5a57; --none:#6b7075;
+          --bLand:#1f1f1f; --bWater:#14202a; --bRiver:#1c3142; --bUrban:#292927;
+          --bShade:#000000; --bLit:#3a3a3a; --bShadeK:0.45; } }
+  html, body { margin:0; height:100%; overflow:hidden; font:13px system-ui, sans-serif; color:var(--fg); background:var(--bg); }
+  #map { position:absolute; inset:0; }
+  .box { background:var(--bg); border:1px solid var(--line); border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,.12); box-sizing:border-box; }
+  #ctl { position:absolute; left:10px; top:10px; z-index:2; width:330px; max-width:calc(100vw - 20px); padding:8px 10px; }
+  #ctl h1 { margin:0; font-size:16px; font-weight:700; display:flex; align-items:center; gap:8px; }
+  #ctl h1 .fold { margin-left:auto; font:11px system-ui, sans-serif; padding:1px 6px; border:1px solid var(--line); border-radius:4px;
+                  background:none; color:var(--muted); cursor:pointer; }
+  #ctl .sub { color:var(--muted); font-size:11.5px; margin:2px 0 6px; line-height:1.4; }
+  #ctl.folded .body { display:none; }
+  #ctl.folded .sub { margin-bottom:0; }
+  .modes { display:flex; gap:0; border:1px solid var(--line); border-radius:5px; overflow:hidden; margin-bottom:6px; }
+  .modes button { flex:1; font:12px system-ui, sans-serif; padding:4px 2px; border:0; border-left:1px solid var(--line); background:none;
+                  color:var(--fg); cursor:pointer; white-space:nowrap; }
+  .modes button:first-child { border-left:0; }
+  .modes button.on { background:var(--sel); color:#fff; }
+  .row { display:flex; align-items:center; gap:6px; margin:4px 0; flex-wrap:wrap; }
+  #q { flex:1; min-width:0; font:inherit; padding:4px 7px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--fg); }
+  .row button, .row select { font:12px system-ui, sans-serif; padding:3px 7px; border:1px solid var(--line); border-radius:4px;
+                             background:var(--bg); color:var(--fg); cursor:pointer; }
+  .row label { display:inline-flex; align-items:center; gap:3px; cursor:pointer; user-select:none; }
+  #qinfo { color:var(--muted); font-size:11.5px; min-height:15px; }
+  #legend { position:absolute; left:10px; bottom:28px; z-index:2; padding:6px 9px; font-size:11.5px; width:330px; max-width:calc(100vw - 20px); }
+  #legend .t { font-weight:600; margin-bottom:3px; }
+  #legend .bar { height:9px; border-radius:2px; }
+  #legend .ticks { position:relative; height:14px; color:var(--muted); font-size:10.5px; font-variant-numeric:tabular-nums; }
+  #legend .ticks span { position:absolute; transform:translateX(-50%); white-space:nowrap; }
+  #legend .ticks span:first-child { transform:none; }
+  #legend .ticks span:last-child { transform:translateX(-100%); }
+  #legend .ex { color:var(--muted); margin-top:3px; line-height:1.45; }
+  #legend .ex i { display:inline-block; width:18px; height:3px; vertical-align:middle; margin-right:4px; border-radius:2px; }
+  #legend .note { color:var(--muted); margin-top:4px; padding-top:4px; border-top:1px solid var(--line); line-height:1.45; }
+  #legend .hist { display:flex; align-items:flex-end; gap:1px; height:34px; margin-top:4px; }
+  #legend .hist div { flex:1; border-radius:1px 1px 0 0; min-height:1px; }
+  #tip { position:absolute; z-index:4; display:none; pointer-events:none; padding:6px 8px; font-size:12px; max-width:280px; line-height:1.45; }
+  #panel { position:absolute; right:10px; top:10px; z-index:3; width:380px; max-width:calc(100vw - 20px); max-height:calc(100% - 60px);
+           overflow:auto; padding:10px 12px; display:none; font-size:12.5px; line-height:1.5; }
+  #panel .x { position:absolute; right:10px; top:8px; cursor:pointer; color:var(--muted); }
+  #panel .x:hover { color:var(--fg); }
+  .od { font-size:15px; font-weight:700; padding-right:18px; }
+  .ln { color:var(--muted); }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:1px 10px; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .kv b { font-weight:600; }
+  .kv .k { color:var(--muted); }
+  .sw { display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:-1px; margin-right:3px; }
+  .links { margin-top:8px; display:flex; gap:10px; flex-wrap:wrap; }
+  .links a { color:var(--hl); }
+  .key { color:var(--muted); font-size:10.5px; margin-top:6px; word-break:break-all; }
+  .warn { color:#c62828; font-size:11.5px; margin-top:4px; }
+  #prof { margin-top:8px; }
+  #prof svg { display:block; width:100%; height:auto; overflow:visible; font:10px system-ui, sans-serif; }
+  #prof .cap { color:var(--muted); font-size:10.5px; display:flex; justify-content:space-between; gap:6px; }
+  #prof .cap a { color:var(--hl); cursor:pointer; }
+  #loading { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:5; padding:8px 14px; color:var(--muted); }
+  .maplibregl-ctrl-attrib { font-size:10px; }
+  @media (max-width: 640px) {
+    #ctl { width:calc(100vw - 20px); }
+    #legend { width:auto; right:10px; bottom:22px; }
+    #legend .note, #legend .hist { display:none; }
+    #panel { left:10px; right:10px; top:auto; bottom:10px; width:auto; max-height:58%; }
+    .maplibregl-ctrl-top-right { top:auto; bottom:120px; }
+  }
+</style>
+</head><body>
+<div id="map"></div>
+<div id="ctl" class="box">
+  <h1>线路坡度地图 <button class="fold" id="fold" title="收起 / 展开">收起</button></h1>
+  <div class="sub" id="sub">加载中…</div>
+  <div class="body">
+    <div class="modes" id="modes">
+      <button data-m="grade" class="on" title="坡段坡度绝对值（‰）">坡度</button>
+      <button data-m="ele" title="坡段平均海拔（m）">海拔</button>
+      <button data-m="bt" title="桥梁 + 隧道占坡段长度的比例（OSM 标注）">桥隧占比</button>
+    </div>
+    <div class="row">
+      <input id="q" type="search" list="lnlist" placeholder="线名，如 宝成线、京张高铁" autocomplete="off">
+      <button id="fit" title="缩放到匹配段">定位</button>
+    </div>
+    <datalist id="lnlist"></datalist>
+    <div id="qinfo"></div>
+    <div class="row">
+      <span>只看坡度 ≥</span>
+      <select id="min">
+        <option value="0">全部</option>
+        <option value="4">4‰</option>
+        <option value="6">6‰</option>
+        <option value="12">12‰</option>
+        <option value="20">20‰</option>
+        <option value="25">25‰</option>
+        <option value="30">30‰</option>
+      </select>
+      <label title="只显示 OSM 标注的高铁 / 城际（底图等级 ≤ 1）"><input type="checkbox" id="hsr"> 只看高铁</label>
+      <span id="cnt" style="color:var(--muted);font-size:11.5px"></span>
+    </div>
+  </div>
+</div>
+<div id="legend" class="box"></div>
+<div id="tip" class="box"></div>
+<div id="panel" class="box"></div>
+<div id="loading" class="box">加载坡度数据…</div>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const okNum = v => typeof v === 'number' && isFinite(v);
+
+// ---------- 色标 ----------
+const GRADE_STOPS = [[0, '#3a9a5b'], [3, '#8cc265'], [6, '#d4e36b'], [9, '#f6d24a'], [12, '#f4a53c'], [16, '#ea6f2d'],
+                     [20, '#d63a2a'], [25, '#a51f3a'], [30, '#6e1250'], [35, '#3b0a45']];
+const MODES = {
+  grade: { field: 'ga', title: '坡度绝对值（‰，DEM 推算坡段）', stops: GRADE_STOPS, fmt: v => v },
+  ele:   { field: 'em', title: '平均海拔（m）',
+           stops: [[0, '#2c7bb6'], [100, '#00a6ca'], [300, '#00ccbc'], [600, '#90eb9d'], [1000, '#e8f08a'], [1500, '#f9d057'],
+                   [2200, '#f29e2e'], [3000, '#e76818'], [4000, '#c2185b'], [5000, '#6a1b9a']], fmt: v => v },
+  bt:    { field: 'bt', title: '桥隧占比（OSM bridge / tunnel 标注；越高 DEM 越不可信、已按两端拉直）',
+           stops: [[0, '#b8b8b8'], [25, '#9ecae1'], [50, '#4292c6'], [75, '#2c5fa8'], [100, '#3f007d']], fmt: v => v + '%' },
+};
+const colorOf = (mode, v) => {
+  const st = MODES[mode].stops;
+  if (!okNum(v)) return css('--none');
+  if (v <= st[0][0]) return st[0][1];
+  for (let i = 1; i < st.length; i++) if (v <= st[i][0]) {
+    const [a, ca] = st[i - 1], [b, cb] = st[i], t = (v - a) / (b - a);
+    const p = c => [1, 3, 5].map(j => parseInt(c.slice(j, j + 2), 16));
+    const A = p(ca), B = p(cb);
+    return 'rgb(' + A.map((x, j) => Math.round(x + (B[j] - x) * t)).join(',') + ')';
+  }
+  return st[st.length - 1][1];
+};
+
+// ---------- 状态与 URL hash ----------
+// #c=纬度,经度,缩放&m=grade|ele|bt&q=线名&min=12&hsr=1&s=笔画.段   也认简写 #宝成线
+const S = { mode: 'grade', q: '', min: 0, hsr: false, sel: null, view: null };
+function readHash() {
+  const raw = location.hash.slice(1);
+  if (!raw) return;
+  for (const kv of raw.split('&')) {
+    if (!kv) continue;
+    const i = kv.indexOf('=');
+    let k = i < 0 ? 'q' : kv.slice(0, i), v = i < 0 ? kv : kv.slice(i + 1);
+    try { v = decodeURIComponent(v); } catch (e) {}
+    if (k === 'c') { const [la, lo, z] = v.split(',').map(Number); if ([la, lo, z].every(okNum)) S.view = { lat: la, lon: lo, z }; }
+    else if (k === 'm' && MODES[v]) S.mode = v;
+    else if (k === 'q' || k === 'line') S.q = v.trim();
+    else if (k === 'min') S.min = +v || 0;
+    else if (k === 'hsr') S.hsr = v === '1';
+    else if (k === 's') S.sel = v;
+  }
+}
+let hashTimer = null;
+function writeHash() {
+  clearTimeout(hashTimer);
+  hashTimer = setTimeout(() => {
+    if (!map) return;
+    const c = map.getCenter(), parts = [];
+    parts.push(`c=${c.lat.toFixed(4)},${c.lng.toFixed(4)},${map.getZoom().toFixed(2)}`);
+    if (S.mode !== 'grade') parts.push('m=' + S.mode);
+    if (S.q) parts.push('q=' + encodeURIComponent(S.q));
+    if (S.min) parts.push('min=' + S.min);
+    if (S.hsr) parts.push('hsr=1');
+    if (S.sel != null && SEG[S.sel]) parts.push('s=' + SEG[S.sel].key);
+    const h = '#' + parts.join('&');
+    if (h !== location.hash) history.replaceState(null, '', h);
+  }, 250);
+}
+readHash();
+
+// ---------- 地图（底图同 speed.html / map.html） ----------
+const BASE_TILES = {"omt":"https://tiles.openfreemap.org/planet","dem":"https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png","attr":"<a href=\"https://openfreemap.org\">OpenFreeMap</a> &copy; OpenMapTiles &copy; OpenStreetMap contributors · 地形 <a href=\"https://registry.opendata.aws/terrain-tiles/\">Mapzen Terrain Tiles</a>"};
+const baseStyle = () => ({
+  version: 8,
+  sources: {
+    omt: { type: 'vector', ...(BASE_TILES.omt.includes('{z}') ? { tiles: [BASE_TILES.omt], maxzoom: 14 } : { url: BASE_TILES.omt }) },
+    dem: { type: 'raster-dem', encoding: 'terrarium', tileSize: 256, maxzoom: 12, tiles: [BASE_TILES.dem] },
+  },
+  layers: [
+    { id: 'land', type: 'background', paint: { 'background-color': css('--bLand') } },
+    { id: 'hills', type: 'hillshade', source: 'dem',
+      paint: { 'hillshade-exaggeration': +css('--bShadeK'), 'hillshade-shadow-color': css('--bShade'),
+               'hillshade-highlight-color': css('--bLit'), 'hillshade-accent-color': css('--bShade'),
+               'hillshade-illumination-direction': 315 } },
+    { id: 'urban', type: 'fill', source: 'omt', 'source-layer': 'landuse', minzoom: 8,
+      filter: ['in', ['get', 'class'], ['literal', ['residential', 'commercial', 'industrial', 'retail']]],
+      paint: { 'fill-color': css('--bUrban') } },
+    { id: 'water', type: 'fill', source: 'omt', 'source-layer': 'water', paint: { 'fill-color': css('--bWater') } },
+    { id: 'river', type: 'line', source: 'omt', 'source-layer': 'waterway', minzoom: 7,
+      filter: ['in', ['get', 'class'], ['literal', ['river', 'canal']]],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': css('--bRiver'), 'line-width': ['interpolate', ['exponential', 1.4], ['zoom'], 6, 0.5, 10, 1.2, 14, 3] } },
+  ],
+});
+const map = new maplibregl.Map({
+  container: 'map', style: baseStyle(),
+  center: S.view ? [S.view.lon, S.view.lat] : [106, 34], zoom: S.view ? S.view.z : 4.2,
+  minZoom: 2, maxZoom: 16, dragRotate: false, pitchWithRotate: false, touchPitch: false,
+  attributionControl: { customAttribution: '地形 <a href="https://registry.opendata.aws/terrain-tiles/">Mapzen Terrain Tiles</a> · 线路 OSM · 坡度由 SRTM 高程推算，非官方纵断面' },
+});
+map.touchZoomRotate.disableRotation();
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+map.addControl(new maplibregl.ScaleControl({ maxWidth: 110, unit: 'metric' }), 'bottom-right');
+
+// ---------- 坡度数据 ----------
+// grade_map.json：strokes[k] = [hsr, profile(Δs m, Δh dm …), segs[[线名下标, 桥%, 隧%, d4 坐标]]]
+// 第 j 段对应纵断面第 j 到 j+1 个断点
+let GM = null, SEG = [], STK = [], SEGGJ = null, BYKEY = new Map(), hoverId = null, matched = null;
+const getJSON = u => fetch(u).then(r => { if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); });
+function decode(gm) {
+  const feats = [], names = gm.names;
+  SEG = []; STK = []; BYKEY = new Map();
+  gm.strokes.forEach(([hsr, prof, segs], k) => {
+    const ps = [], ph = [];
+    let s = 0, h = 0;
+    for (let i = 0; i < prof.length; i += 2) { s += prof[i]; h += prof[i + 1]; ps.push(s); ph.push(h / 10); }
+    const stk = { k, hsr, s: ps, h: ph, segs: [] };
+    STK.push(stk);
+    segs.forEach(([ni, bp, tp, d4], j) => {
+      const co = [];
+      let x = 0, y = 0;
+      for (let t = 0; t < d4.length; t += 2) { x += d4[t]; y += d4[t + 1]; co.push([x / 1e4, y / 1e4]); }
+      const s0 = ps[j], s1 = ps[j + 1], h0 = ph[j], h1 = ph[j + 1];
+      if (!okNum(s1)) return;
+      const g = (h1 - h0) / Math.max(s1 - s0, 1) * 1000;
+      const i = SEG.length;
+      const rec = { i, k, j, key: `${k}.${j}`, line: names[ni] || '', s0, s1, h0, h1, g, bp, tp, hsr, coords: co };
+      SEG.push(rec); stk.segs.push(i); BYKEY.set(rec.key, i);
+      if (co.length < 2) return;
+      feats.push({ type: 'Feature', id: i, geometry: { type: 'LineString', coordinates: co },
+        properties: { i, ga: Math.round(Math.abs(g) * 10) / 10, em: Math.round((h0 + h1) / 2), bt: Math.min(100, bp + tp), hsr } });
+    });
+  });
+  SEGGJ = { type: 'FeatureCollection', features: feats };
+  const cnt = new Map();
+  for (const s of SEG) if (s.line) cnt.set(s.line, (cnt.get(s.line) || 0) + (s.s1 - s.s0));
+  $('lnlist').innerHTML = [...cnt.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3000).map(([n]) => `<option value="${esc(n)}">`).join('');
+}
+function fmtDate(s) { return String(s || '').replace('T', ' ').replace(/\.\d+.*$/, '').replace(/(\d\d:\d\d):\d\d.*$/, '$1'); }
+function setSub() {
+  const st = GM.stats || {};
+  $('sub').textContent = `SRTM 高程推算 · ${Math.round(st.km || 0).toLocaleString()} km 正线 · ${SEG.length.toLocaleString()} 坡段 · 生成于 ${fmtDate(GM.generated_at)}`;
+}
+
+// ---------- 样式表达式 ----------
+function colorExpr() {
+  const md = MODES[S.mode], interp = ['interpolate', ['linear'], ['to-number', ['get', md.field]]];
+  for (const [v, c] of md.stops) interp.push(v, c);
+  return interp;
+}
+const W_STOPS = [[4, 1.1], [7, 2], [10, 3.4], [13, 5.5], [16, 8]];
+const zoomW = (k, add = 0) => ['interpolate', ['exponential', 1.5], ['zoom'], ...W_STOPS.flatMap(([z, w]) => [z, typeof k === 'number' ? w * k + add : ['+', ['*', w, k], add]])];
+const hitList = () => matched ? ['literal', [...matched]] : null;
+function widthExpr() {
+  const hl = hitList();
+  // 坡度模式下陡坡加粗一点，全国视图里一眼能看到山区线路
+  const steepK = S.mode === 'grade' ? ['interpolate', ['linear'], ['get', 'ga'], 0, 0.8, 12, 1, 25, 1.35] : 1;
+  return zoomW(hl ? ['*', steepK, ['case', ['in', ['get', 'i'], hl], 1.5, 0.7]] : steepK);
+}
+function opacityExpr() {
+  const hl = hitList();
+  return hl ? ['case', ['in', ['get', 'i'], hl], 0.95, 0.12] : 0.92;
+}
+function filterExpr() {
+  const f = ['all'];
+  if (S.min) f.push(['>=', ['get', 'ga'], S.min]);
+  if (S.hsr) f.push(['==', ['get', 'hsr'], 1]);
+  return f.length > 1 ? f : null;
+}
+// 排序：陡的画在上面
+const sortKey = () => S.mode === 'grade' ? ['get', 'ga'] : S.mode === 'ele' ? ['get', 'em'] : ['get', 'bt'];
+
+function addOverlay() {
+  if (!SEGGJ || map.getLayer('seg')) return;
+  if (!map.getSource('seg')) map.addSource('seg', { type: 'geojson', data: SEGGJ, tolerance: 0.3 });
+  map.addLayer({ id: 'seg-case', type: 'line', source: 'seg', layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['case', ['boolean', ['feature-state', 'sel'], false], css('--sel'), css('--fg')],
+             'line-width': zoomW(1, 5),
+             'line-opacity': ['case', ['boolean', ['feature-state', 'sel'], false], 0.95, ['boolean', ['feature-state', 'hover'], false], 0.7, 0] } });
+  map.addLayer({ id: 'seg', type: 'line', source: 'seg', layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': sortKey() },
+    paint: { 'line-color': colorExpr(), 'line-width': widthExpr(), 'line-opacity': opacityExpr() } });
+  map.addLayer({ id: 'seg-hit', type: 'line', source: 'seg', paint: { 'line-color': '#000', 'line-opacity': 0, 'line-width': 12 } });
+  applyStyle();
+  if (S.sel != null && typeof S.sel === 'number') map.setFeatureState({ source: 'seg', id: S.sel }, { sel: true });
+}
+function applyStyle() {
+  if (!map.getLayer('seg')) return;
+  map.setPaintProperty('seg', 'line-color', colorExpr());
+  map.setPaintProperty('seg', 'line-width', widthExpr());
+  map.setPaintProperty('seg', 'line-opacity', opacityExpr());
+  map.setLayoutProperty('seg', 'line-sort-key', sortKey());
+  const f = filterExpr();
+  for (const id of ['seg', 'seg-case', 'seg-hit']) map.setFilter(id, f);
+  drawLegend();
+  countVisible();
+}
+function countVisible() {
+  if (!SEG.length) return;
+  let n = 0, km = 0;
+  for (const s of SEG) {
+    if (S.min && Math.abs(s.g) < S.min) continue;
+    if (S.hsr && !s.hsr) continue;
+    n++; km += s.s1 - s.s0;
+  }
+  $('cnt').textContent = `${n.toLocaleString()} 段 / ${Math.round(km / 1000).toLocaleString()} km`;
+}
+
+// ---------- 图例（含全路坡度里程分布） ----------
+function drawLegend() {
+  const md = MODES[S.mode], st = md.stops, n = st.length;
+  const grad = st.map(([, c], i) => `${c} ${(100 * i / (n - 1)).toFixed(1)}%`).join(',');
+  const ticks = st.map(([v], i) => `<span style="left:${(100 * i / (n - 1)).toFixed(1)}%">${md.fmt(v)}${i === n - 1 && S.mode !== 'bt' ? '+' : ''}</span>`).join('');
+  let hist = '';
+  if (S.mode === 'grade' && SEG.length) {
+    const bins = new Array(12).fill(0);          // 0–3 … 33+，每档 3‰
+    for (const s of SEG) bins[Math.min(11, Math.floor(Math.abs(s.g) / 3))] += s.s1 - s.s0;
+    const mx = Math.max(...bins.map(v => Math.sqrt(v)));
+    const tot = bins.reduce((a, b) => a + b, 0);
+    hist = `<div class="hist" title="各坡度档里程（柱高按平方根）">${bins.map((v, i) =>
+      `<div style="height:${(100 * Math.sqrt(v) / mx).toFixed(0)}%;background:${colorOf('grade', i * 3 + 1.5)}" title="${i * 3}–${i * 3 + 3}‰：${Math.round(v / 1000).toLocaleString()} km（${(100 * v / tot).toFixed(1)}%）"></div>`).join('')}</div>`;
+  }
+  $('legend').innerHTML = `<div class="t">${esc(md.title)}</div><div class="bar" style="background:linear-gradient(90deg,${grad})"></div>
+    <div class="ticks">${ticks}</div>${hist}
+    <div class="note">按 SRTM 1″ 高程沿线采样：桥梁按两端拉直，隧道按洞外两侧直线贯通，稳健局部回归压掉路堑 / 路堤 / 城区建筑，
+    再折线拟合成坡段（高铁 ≥ ${GM ? GM.params.min_seg_hsr_m : 800} m、普速 ≥ ${GM ? GM.params.min_seg_m : 400} m）。
+    单段 ±3‰ 以内的起伏不必当真；点线路看纵断面。</div>`;
+}
+
+// ---------- 搜索 ----------
+function runSearch(fit) {
+  const q = S.q.trim();
+  if (!q) { matched = null; $('qinfo').textContent = ''; applyStyle(); return; }
+  const m = new Set(), lines = new Set();
+  const exact = SEG.some(s => s.line === q);
+  let km = 0;
+  SEG.forEach((s, i) => {
+    if (exact ? s.line === q : s.line.includes(q)) { m.add(i); lines.add(s.line); km += s.s1 - s.s0; }
+  });
+  matched = m;
+  $('qinfo').textContent = m.size ? `匹配 ${m.size} 段 ${Math.round(km / 1000)} km` + (lines.size <= 3 ? '：' + [...lines].join('、') : `，${lines.size} 条线`) : '没有匹配的段';
+  applyStyle();
+  if (fit && m.size) fitTo([...m], fit === 'instant');
+}
+function fitTo(ids, instant) {
+  let w = 180, e = -180, s = 90, n = -90;
+  for (const i of ids) for (const [x, y] of SEG[i].coords) { if (x < w) w = x; if (x > e) e = x; if (y < s) s = y; if (y > n) n = y; }
+  if (w > e) return;
+  const narrow = innerWidth <= 640;
+  map.fitBounds([[w, s], [e, n]], { padding: narrow ? { top: 200, bottom: 80, left: 20, right: 20 } : { top: 40, bottom: 60, left: 360, right: 410 }, maxZoom: 13, duration: instant ? 0 : 600 });
+}
+
+// ---------- 提示与详情 ----------
+const km1 = m => (m / 1000).toFixed(m < 10000 ? 2 : 1);
+const gStr = g => (g >= 0 ? '+' : '−') + Math.abs(g).toFixed(1) + '‰';
+function infoHtml(s, full) {
+  const sw = (m, v) => `<span class="sw" style="background:${colorOf(m, v)}"></span>`;
+  const L = s.s1 - s.s0, ga = Math.abs(s.g);
+  let h = `<div class="od">${esc(s.line || '（无线名）')}</div>
+  <div class="kv">
+    <span class="k">坡度</span><span>${sw('grade', ga)}<b>${ga.toFixed(1)}‰</b> <span style="color:var(--muted)">（沿折线方向 ${gStr(s.g)}，${Math.abs(s.h1 - s.h0).toFixed(0)} m 落差）</span></span>
+    <span class="k">坡段长</span><span>${km1(L)} km</span>
+    <span class="k">海拔</span><span>${sw('ele', (s.h0 + s.h1) / 2)}${Math.round(s.h0)} → ${Math.round(s.h1)} m</span>
+    <span class="k">桥 / 隧</span><span>${sw('bt', s.bp + s.tp)}桥 ${s.bp}% · 隧 ${s.tp}%</span>
+  </div>`;
+  if (ga > 30) h += `<div class="warn">超过 30‰：多为 DEM 误差（漏标桥隧、深路堑），少数为真实限制坡度地段</div>`;
+  if (full) {
+    h += `<div id="prof"></div>`;
+    const ln = s.line ? encodeURIComponent(s.line) : '';
+    h += `<div class="links">${ln ? `<a href="#" id="qsel">筛选此线</a><a href="speed.html#q=${ln}" target="_blank" rel="noopener">限速地图</a>
+      <a href="diagram.html#line=${ln}" target="_blank" rel="noopener">运行图</a>` : ''}<a href="#" id="fitsel">缩放到此段</a></div>`;
+    h += `<div class="key">笔画 ${s.k} · 第 ${s.j + 1}/${STK[s.k].segs.length} 段 · 笔画里程 ${km1(s.s0)}–${km1(s.s1)} km${s.hsr ? ' · 高铁口径' : ''}</div>`;
+  }
+  return h;
+}
+// 纵断面：所在笔画在本段前后 ±R 范围内的断点折线，本段高亮，各段按坡度着色
+let profR = 30000;
+function drawProfile(s) {
+  const box = $('prof');
+  if (!box) return;
+  const stk = STK[s.k], mid = (s.s0 + s.s1) / 2, tot = stk.s[stk.s.length - 1];
+  let a = Math.max(0, mid - profR), b = Math.min(tot, mid + profR);
+  if (b - a < 2 * profR) { if (a === 0) b = Math.min(tot, 2 * profR); else a = Math.max(0, tot - 2 * profR); }
+  const ids = stk.segs.filter(i => SEG[i].s1 > a && SEG[i].s0 < b);
+  if (!ids.length) { box.innerHTML = ''; return; }
+  let hmin = Infinity, hmax = -Infinity;
+  for (const i of ids) { const t = SEG[i]; hmin = Math.min(hmin, t.h0, t.h1); hmax = Math.max(hmax, t.h0, t.h1); }
+  const pad = Math.max(10, (hmax - hmin) * 0.12); hmin -= pad; hmax += pad;
+  const W = 356, H = 150, ml = 34, mr = 4, mt = 6, mb = 16;
+  const X = v => ml + (v - a) / (b - a) * (W - ml - mr), Y = v => mt + (hmax - v) / (hmax - hmin) * (H - mt - mb);
+  let svg = `<svg viewBox="0 0 ${W} ${H}">`;
+  // 网格
+  const step = [10, 20, 50, 100, 200, 500, 1000].find(v => (hmax - hmin) / v <= 5) || 2000;
+  for (let v = Math.ceil(hmin / step) * step; v <= hmax; v += step)
+    svg += `<line x1="${ml}" x2="${W - mr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${ml - 3}" y="${Y(v) + 3}" text-anchor="end" fill="var(--muted)">${v}</text>`;
+  const xs = [1, 2, 5, 10, 20, 50, 100].find(v => (b - a) / 1000 / v <= 7) || 200;
+  for (let v = Math.ceil(a / 1000 / xs) * xs; v * 1000 <= b; v += xs)
+    svg += `<text x="${X(v * 1000)}" y="${H - 3}" text-anchor="middle" fill="var(--muted)">${v}</text>`;
+  // 坡段填充 + 折线
+  for (const i of ids) {
+    const t = SEG[i], x0 = X(Math.max(a, t.s0)), x1 = X(Math.min(b, t.s1));
+    const fy = v => Y(t.h0 + (t.h1 - t.h0) * (v - t.s0) / Math.max(t.s1 - t.s0, 1));
+    const y0 = fy(Math.max(a, t.s0)), y1 = fy(Math.min(b, t.s1)), c = colorOf('grade', Math.abs(t.g));
+    svg += `<path d="M${x0},${y0}L${x1},${y1}L${x1},${H - mb}L${x0},${H - mb}Z" fill="${c}" fill-opacity="${i === s.i ? 0.55 : 0.22}" data-i="${i}" style="cursor:pointer"/>`;
+    svg += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="${i === s.i ? css('--sel') : c}" stroke-width="${i === s.i ? 3 : 1.8}" stroke-linecap="round"/>`;
+    if (x1 - x0 > 26 && Math.abs(t.g) >= 3)
+      svg += `<text x="${(x0 + x1) / 2}" y="${Math.min(y0, y1) - 3}" text-anchor="middle" fill="var(--fg)" style="font-size:9px">${Math.abs(t.g).toFixed(0)}</text>`;
+  }
+  svg += `</svg>`;
+  box.innerHTML = `<div class="cap"><span>纵断面（横轴笔画里程 km，纵轴海拔 m，数字为 ‰）</span>
+    <span><a id="pz-">−</a> ±${profR / 1000} km <a id="pz+">＋</a></span></div>` + svg;
+  box.querySelectorAll('path[data-i]').forEach(p => p.addEventListener('click', () => select(+p.dataset.i, true)));
+  $('pz-').onclick = () => { profR = Math.min(400000, profR * 2); drawProfile(s); };
+  $('pz+').onclick = () => { profR = Math.max(5000, profR / 2); drawProfile(s); };
+}
+function setHover(id) {
+  if (hoverId === id) return;
+  if (hoverId != null) map.setFeatureState({ source: 'seg', id: hoverId }, { hover: false });
+  hoverId = id;
+  if (id != null) map.setFeatureState({ source: 'seg', id }, { hover: true });
+}
+function select(i, fly) {
+  if (S.sel != null && typeof S.sel === 'number' && map.getSource('seg')) map.setFeatureState({ source: 'seg', id: S.sel }, { sel: false });
+  S.sel = i;
+  const p = $('panel');
+  if (i == null || !SEG[i]) { S.sel = null; p.style.display = 'none'; writeHash(); return; }
+  if (map.getSource('seg')) map.setFeatureState({ source: 'seg', id: i }, { sel: true });
+  const s = SEG[i];
+  p.innerHTML = `<span class="x" id="px" title="关闭">✕</span>` + infoHtml(s, true);
+  p.style.display = 'block';
+  drawProfile(s);
+  $('px').onclick = () => select(null);
+  $('fitsel').onclick = e => { e.preventDefault(); fitTo([i]); };
+  if ($('qsel')) $('qsel').onclick = e => { e.preventDefault(); $('q').value = S.q = s.line; runSearch(true); writeHash(); };
+  if (fly) fitTo([i], fly === 'instant');
+  writeHash();
+}
+function bindEvents() {
+  const tip = $('tip');
+  map.on('mousemove', 'seg-hit', e => {
+    const f = e.features && e.features[0];
+    if (!f) return;
+    setHover(f.id);
+    map.getCanvas().style.cursor = 'pointer';
+    if (matchMedia('(hover: none)').matches) return;
+    tip.innerHTML = infoHtml(SEG[f.id], false);
+    tip.style.display = 'block';
+    const r = map.getContainer().getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
+    let x = e.point.x + 14, y = e.point.y + 14;
+    if (x + tw > r.width - 6) x = e.point.x - tw - 14;
+    if (y + th > r.height - 6) y = Math.max(6, e.point.y - th - 14);
+    tip.style.left = Math.max(6, x) + 'px'; tip.style.top = y + 'px';
+  });
+  map.on('mouseleave', 'seg-hit', () => { setHover(null); tip.style.display = 'none'; map.getCanvas().style.cursor = ''; });
+  map.on('click', e => {
+    const fs = map.getLayer('seg-hit') ? map.queryRenderedFeatures([[e.point.x - 4, e.point.y - 4], [e.point.x + 4, e.point.y + 4]], { layers: ['seg-hit'] }) : [];
+    tip.style.display = 'none';
+    select(fs.length ? fs[0].id : null);
+  });
+  map.on('moveend', writeHash);
+}
+
+// ---------- 控件 ----------
+$('modes').addEventListener('click', e => {
+  const b = e.target.closest('button[data-m]');
+  if (!b) return;
+  S.mode = b.dataset.m; syncControls(); applyStyle(); writeHash();
+});
+let qTimer = null;
+$('q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(() => { S.q = $('q').value.trim(); runSearch(false); writeHash(); }, 200); });
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(qTimer); S.q = $('q').value.trim(); runSearch(true); writeHash(); } });
+$('fit').onclick = () => { S.q = $('q').value.trim(); runSearch(true); writeHash(); };
+$('min').onchange = () => { S.min = +$('min').value; applyStyle(); writeHash(); };
+$('hsr').onchange = () => { S.hsr = $('hsr').checked; applyStyle(); writeHash(); };
+$('fold').onclick = () => { const c = $('ctl').classList.toggle('folded'); $('fold').textContent = c ? '展开' : '收起'; };
+if (innerWidth <= 640 && !S.q) { $('ctl').classList.add('folded'); $('fold').textContent = '展开'; }
+function syncControls() {
+  for (const b of $('modes').querySelectorAll('button')) b.classList.toggle('on', b.dataset.m === S.mode);
+  $('q').value = S.q; $('min').value = String(S.min); $('hsr').checked = S.hsr;
+}
+syncControls();
+drawLegend();
+addEventListener('hashchange', () => {
+  const before = JSON.stringify([S.mode, S.q, S.min, S.hsr]);
+  readHash(); syncControls();
+  if (JSON.stringify([S.mode, S.q, S.min, S.hsr]) !== before) runSearch(false);
+});
+
+// ---------- 启动 ----------
+const mapReady = new Promise(res => map.once('style.load', res));
+const dataReady = getJSON('grade_map.json');
+mapReady.then(() => bindEvents());
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  map.setStyle(baseStyle(), { diff: false });
+  map.once('style.load', () => { addOverlay(); drawLegend(); });
+});
+Promise.all([dataReady, mapReady]).then(([gm]) => {
+  GM = gm;
+  decode(gm);
+  setSub();
+  addOverlay();
+  const selKey = S.sel;
+  S.sel = null;
+  runSearch(S.view ? false : 'instant');
+  if (selKey != null && BYKEY.has(selKey)) select(BYKEY.get(selKey), !S.view && !S.q ? 'instant' : false);
+  $('loading').remove();
+  window.__gradeReady = true;
+}).catch(e => {
+  console.error(e);
+  $('loading').textContent = '坡度数据加载失败：' + (e && e.message || e);
+  $('sub').textContent = '没有找到 grade_map.json（需先运行 python -m railmap.network.grade_map）';
+});
+</script>
+</body></html>
