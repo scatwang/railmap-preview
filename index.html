@@ -1,0 +1,2450 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>列车位置地图</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="vendor/leaflet.min.css">
+<script src="vendor/leaflet.min.js"></script>
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<script src="vendor/maplibre-gl.js"></script>
+<script src="vendor/leaflet-maplibre-gl.js"></script>
+<style>
+  :root { --bg:#fff; --fg:#222; --muted:#777; --line:#ddd; --sel:#e6007e; --hl:#0891b2;
+          --r0:#b0272f; --r1:#e8892b; --r2:#3a78b5; --r3:#9aa0a6;
+          --tS:#a7aeb6; --tW:#ffffff; --tJ:#2e9a63; --tZT:#8a9a52; --tK:#3f9142; --tO:#1d5a3a;
+          --tGold:#d4a017; --tEdge:#4a4a4a;
+          --bLand:#f3f2ee; --bWater:#c6d9e6; --bRiver:#a9c6dc; --bUrban:#e4e1da;
+          --bShade:#5f5a50; --bLit:#ffffff; --bShadeK:0.35;
+          --stFill:#d4d4d4; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1b1b1b; --fg:#e6e6e6; --muted:#9a9a9a; --line:#3a3a3a; --sel:#ff4fc0; --hl:#22d3ee;
+          --r0:#e5484d; --r1:#f0a04b; --r2:#5b9bd5; --r3:#6b7075;
+          --tS:#959ca4; --tW:#d6d1c4; --tJ:#3fb57a; --tZT:#a3b36a; --tK:#58b05b; --tO:#2f7d52;
+          --tGold:#f0c040; --tEdge:#1b1b1b;
+          --bLand:#1f1f1f; --bWater:#14202a; --bRiver:#1c3142; --bUrban:#292927;
+          --bShade:#000000; --bLit:#3a3a3a; --bShadeK:0.45;
+          --stFill:#4a4a4a; } }
+  #legend { position:absolute; left:10px; bottom:66px; z-index:1000; background:var(--bg); border:1px solid var(--line);
+            border-radius:6px; padding:6px 9px; font-size:12px; line-height:1.7; box-shadow:0 1px 4px rgba(0,0,0,.12); }
+  #legend i { display:inline-block; width:18px; height:3px; vertical-align:middle; margin-right:6px; border-radius:2px; }
+  #auxtip { position:absolute; z-index:1001; display:none; background:var(--bg); color:var(--fg); border:1px solid var(--line);
+            border-radius:5px; padding:4px 8px; font-size:12px; box-shadow:0 1px 4px rgba(0,0,0,.2); pointer-events:none; }
+  #legend svg { vertical-align:middle; margin:0 6px 0 0; }
+  #legend .h { color:var(--muted); font-size:11px; margin-top:4px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  #legend .h:first-child { margin-top:0; }
+  #mkbtn { font:11px system-ui, sans-serif; line-height:1.3; padding:1px 6px; border:1px solid var(--line); border-radius:4px;
+           background:none; color:var(--muted); cursor:pointer; }
+  #mkbtn:hover { color:var(--fg); border-color:var(--muted); }
+  .kd { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; vertical-align:baseline;
+        box-sizing:border-box; border:1px solid var(--tEdge); }
+  html, body { margin:0; height:100%; font:13px system-ui, sans-serif; color:var(--fg); background:var(--bg); }
+  #map { position:absolute; inset:0 0 56px 0; }
+  #bar { position:absolute; left:0; right:0; bottom:0; height:56px; display:flex; align-items:center; gap:12px; padding:0 14px;
+         background:var(--bg); border-top:1px solid var(--line); box-sizing:border-box; }
+  #clock { font:600 20px ui-monospace, monospace; min-width:70px; }
+  #slider { flex:1; }
+  .seg { display:inline-flex; }
+  .seg button { min-width:28px; height:28px; padding:0 !important; border-radius:0 !important; margin-left:-1px; }
+  .seg button:first-child { border-radius:4px 0 0 4px !important; margin-left:0; }
+  .seg button:last-child { border-radius:0 4px 4px 0 !important; }
+  .seg button.pre { border-color:var(--sel) !important; color:var(--sel) !important; position:relative; }
+  .seg button.on { background:var(--sel) !important; border-color:var(--sel) !important; color:#fff !important; position:relative; }
+  #slider.run { accent-color:var(--sel); }
+  #bar button, #bar select, #bar input[type=text] { font:inherit; padding:4px 8px; }
+  #count { color:var(--muted); min-width:110px; }
+  /* 分屏：下半屏嵌运行图（diagram.html），上沿可拖动调高度 */
+  #dgwrap { position:absolute; left:0; right:0; bottom:56px; height:var(--dgH, 45%); display:none; border-top:1px solid var(--line);
+            background:var(--bg); z-index:1001; }
+  #dgwrap iframe { width:100%; height:100%; border:0; display:block; }
+  #dgsplit { position:absolute; left:0; right:0; top:-5px; height:10px; cursor:ns-resize; z-index:2; }
+  #dghint { position:absolute; left:50%; top:50%; transform:translate(-50%, -50%); color:var(--muted); pointer-events:none; }
+  body.split #dgwrap { display:block; }
+  body.split #map { bottom:calc(56px + var(--dgH, 45%)); }
+  body.split #legend { display:none; }
+  body.split #panel { max-height:calc(100% - 56px - var(--dgH, 45%) - 30px); }
+  body.dgdrag iframe { pointer-events:none; }
+  #dgbtn { display:inline-flex; align-items:center; gap:4px; cursor:pointer; }
+  #dgbtn .chev { width:11px; height:11px; transition:transform .16s ease; }
+  #dgbtn.on, #mkbtn.on { color:var(--sel); border-color:var(--sel); background:color-mix(in srgb, var(--sel) 12%, transparent); font-weight:500; }
+  #dgbtn.on .chev { transform:rotate(180deg); }
+  #panel { position:absolute; top:10px; right:10px; width:312px; max-height:calc(100% - 90px); overflow:hidden; z-index:1000;
+           background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; display:none;
+           flex-direction:column; box-shadow:0 2px 8px rgba(0,0,0,.15); }
+  #panel > * { flex-shrink:0; }            /* 只让表格收缩，标题、线路、底栏等不被压扁裁掉 */
+  #panel > .x { position:absolute; top:10px; right:12px; cursor:pointer; color:var(--muted); font-size:13px; line-height:1; }
+  #panel > .x:hover { color:var(--fg); }
+  #panel h3 { margin:0 0 4px; font-size:17px; font-weight:700; padding-right:18px; display:flex; align-items:baseline; gap:5px; flex-wrap:wrap; line-height:1.25; }
+  #panel h3 .note, #panel h3 .tag, #panel h3 .kb-lim { font-weight:normal; }
+  #panel h3 .tag { font-size:11px; padding:1px 4px; margin-left:0; }
+  #panel .od-row { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:4px; }
+  #panel .od { font-size:14px; font-weight:600; }
+  #panel .od .note { font-weight:normal; margin-left:4px; }
+  #panel .cam { display:inline-flex; align-items:center; justify-content:center; width:26px; height:22px;
+                border:1px solid var(--line); border-radius:5px; cursor:pointer; color:var(--muted); text-decoration:none; flex:none; }
+  #panel .cam:hover { color:var(--fg); border-color:var(--muted); }
+  #panel .cam.on { background:var(--tJ); border-color:var(--tJ); color:#fff; }
+  #panel .runs { display:flex; border-bottom:1px solid var(--line); margin:4px 0 6px; gap:2px; }
+  #panel .runs .tab { flex:1; text-align:center; padding:3px 4px 4px; cursor:pointer; border-bottom:2px solid transparent;
+                      margin-bottom:-1px; color:var(--muted); text-decoration:none; border-radius:4px 4px 0 0; line-height:1.25; }
+  #panel .runs .tab:hover { color:var(--fg); background:color-mix(in srgb, var(--fg) 4%, transparent); }
+  #panel .runs .tab.cur { color:var(--sel); border-bottom-color:var(--sel); background:color-mix(in srgb, var(--sel) 6%, transparent); }
+  #panel .runs .tab .t-d { display:block; font-size:11px; font-weight:600; font-variant-numeric:tabular-nums; }
+  #panel .runs .tab .t-s { display:block; font-size:10px; opacity:.85; }
+  #panel .stat { background:color-mix(in srgb, var(--fg) 4%, transparent); border:1px solid var(--line); border-radius:4px;
+                 padding:5px 8px; margin:4px 0 2px; font-size:12px; line-height:1.45; }
+  #panel .tw { flex:1 1 auto !important; min-height:80px; overflow:auto; margin-top:6px; border-top:1px solid var(--line); }
+  #panel .tw table { margin-top:0; }
+  #panel .tw th { position:sticky; top:0; z-index:1; background:var(--bg); text-align:left; font-weight:normal; color:var(--muted);
+                  font-size:11px; padding:3px 4px; box-shadow:0 1px 0 var(--line); white-space:nowrap; }
+  #panel .tw th.num, #panel .tw td.num, #panel .kb-sub th.num, #panel .kb-sub td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  #panel table { width:100%; border-collapse:collapse; font-size:12px; margin-top:6px; }
+  #panel td { padding:3px 4px; border-top:1px solid var(--line); white-space:nowrap; }
+  #panel td.main, #panel .kb-sub td:first-child { width:100%; max-width:0; overflow:hidden; text-overflow:ellipsis; }
+  #panel tr.past td { color:var(--muted); }
+  #panel tr.cur td { font-weight:600; background:color-mix(in srgb, var(--sel) 10%, transparent); }
+  #panel tr.next td { font-weight:600; }
+  #panel tr.next td:first-child::before { content:"→ "; color:var(--sel); font-weight:700; }
+  #panel a[data-line], #panel a[data-st], #panel a[data-pan], #panel a.back, #panel tr[data-i] a { color:inherit; text-decoration:underline dotted; cursor:pointer; }
+  #panel a[data-line]:hover, #panel a[data-st]:hover, #panel a[data-pan]:hover, #panel a.back:hover, #panel tr[data-i] a:hover { color:var(--sel); }
+  #panel .tm { cursor:pointer; }
+  #panel .tm:hover { text-decoration:underline; color:var(--sel); }
+  #panel .tag { white-space:nowrap; font-size:10px; color:var(--muted); border:1px solid var(--line); border-radius:3px; padding:0 3px; margin-left:3px; font-variant-numeric:tabular-nums; }
+  #panel .warn { color:#d9822b; }
+  #panel .sg { white-space:nowrap; font-size:10px; line-height:1.2; color:var(--hl); border:1px solid var(--hl); border-radius:3px; padding:0 2px; margin-left:3px; cursor:help; }
+  #panel .foot { margin-top:6px; padding-top:4px; border-top:1px solid var(--line); color:var(--muted); font-size:11px;
+                 display:flex; justify-content:space-between; align-items:center; gap:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .more { text-decoration:underline dotted; cursor:help; flex:none; }
+  sup.day { font-size:9px; line-height:0; vertical-align:super; margin-left:.5px; font-weight:normal; }
+  svg.ext { width:11px; height:11px; vertical-align:-1px; margin-left:1px; opacity:.75; }
+  .emu-row { display:flex; align-items:center; gap:5px; margin:1px 0 3px; line-height:1.2; }
+  .emu-ico { display:inline-flex; align-items:center; line-height:0; text-decoration:none !important; flex:none; }
+  .emu-ico svg { display:block; }
+  /* 火车Wiki 客里表符号与接算站标记 */
+  u.jsz, #panel a.jsz { color:color-mix(in srgb, var(--fg) 55%, #a82028); text-decoration:underline !important;
+                        text-decoration-color:color-mix(in srgb, currentColor 65%, transparent) !important; text-underline-offset:2px; }
+  #panel a.jsz:hover { color:var(--sel); }
+  .kb-lim { font-family:"Songti SC", "SimSun", system-ui, sans-serif; letter-spacing:.5px; font-size:12px; }
+  .kb-lim span { cursor:help; }
+  .kb-Post { margin-left:1px; font-weight:600; cursor:help; }
+  #panel .kb-bar { display:flex; align-items:center; justify-content:space-between; gap:6px; width:100%; box-sizing:border-box;
+                   margin:4px 0 0; padding:3px 7px; font:11.5px system-ui, sans-serif; color:var(--fg); cursor:pointer;
+                   background:color-mix(in srgb, var(--fg) 3%, transparent); border:1px solid var(--line); border-radius:4px; text-decoration:none; }
+  #panel .kb-bar:hover { border-color:color-mix(in srgb, var(--sel) 50%, var(--line)); }
+  #panel .kb-bar.open { border-radius:4px 4px 0 0; background:color-mix(in srgb, var(--sel) 9%, transparent);
+                        border-color:color-mix(in srgb, var(--sel) 40%, var(--line)); }
+  #panel .kb-bar .kb-l { display:flex; align-items:center; gap:5px; min-width:0; overflow:hidden; }
+  #panel .kb-bar .chev { width:11px; height:11px; flex:none; transition:transform .16s ease; }
+  #panel .kb-bar.open .chev { transform:rotate(90deg); }
+  #panel .kb-bar .kb-sum { color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #panel .kb-bar .kb-cnt { color:var(--muted); font-variant-numeric:tabular-nums; flex:none; }
+  #panel .kb-sub { width:100%; border-collapse:collapse; font-size:11.5px; margin:0 0 4px; border:1px solid var(--line);
+                   border-top:0; border-radius:0 0 4px 4px; overflow:hidden; }
+  #panel .kb-sub th { background:color-mix(in srgb, var(--fg) 4%, transparent); color:var(--muted); font-weight:normal;
+                      font-size:11px; text-align:left; padding:2px 6px; border-bottom:1px solid var(--line); }
+  #panel .kb-sub td { padding:2px 6px; border-top:1px solid var(--line); white-space:nowrap; }
+  /* 选中历史：取消选中后右上角显示刚才的对象，点击恢复；▾ 展开最近的历史 */
+  #hist { position:absolute; top:10px; right:10px; z-index:1000; display:none; font-size:12px; }
+  #hist .grp { display:flex; background:var(--bg); border:1px solid var(--line); border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,.12); }
+  #hist button { font:inherit; color:inherit; background:none; border:0; padding:5px 9px; cursor:pointer; white-space:nowrap; }
+  #hist button:hover { color:var(--sel); }
+  #histBtn { max-width:240px; overflow:hidden; text-overflow:ellipsis; }
+  #histDd { border-left:1px solid var(--line) !important; padding:5px 7px !important; }
+  #histList { position:absolute; right:0; top:calc(100% + 4px); min-width:220px; max-width:320px; max-height:60vh; overflow:auto;
+              background:var(--bg); border:1px solid var(--line); border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,.15);
+              margin:0; padding:4px 0; list-style:none; display:none; }
+  #hist.open #histList { display:block; }
+  #histList li { padding:4px 10px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #histList li:hover { background:color-mix(in srgb, var(--sel) 12%, transparent); }
+  #histList .k { display:inline-block; min-width:2.6em; color:var(--muted); font-size:11px; }
+  #histList .clr { color:var(--muted); font-size:11px; border-top:1px solid var(--line); margin-top:3px; padding-top:5px; }
+  #tip { position:absolute; z-index:1001; pointer-events:none; background:var(--bg); border:1px solid var(--line);
+         border-radius:4px; padding:3px 7px; display:none; white-space:nowrap; box-shadow:0 1px 4px rgba(0,0,0,.15); font-size:11px; line-height:1.3; }
+  #tip b { font-size:11.5px; font-weight:600; }
+  #tip .kd { width:7px; height:7px; margin-right:4px; }
+  .note { color:var(--muted); font-size:11px; }
+  #panel tr.wait td { font-style:italic; color:var(--muted); font-size:11.5px; }
+  #panel tr.wait td:first-child { padding-left:8px; }
+  #panel tr.wait.cur td { color:var(--fg); font-weight:600; }
+  #loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:2000; background:var(--bg); }
+  /* 路网先画出来以后，遮罩缩成顶部的小提示，等列车数据 */
+  #loading.mini { inset:auto; top:10px; left:50%; transform:translateX(-50%); padding:4px 12px; border-radius:12px;
+                  font-size:12px; color:var(--muted); background:var(--bg); opacity:.9; pointer-events:none; }
+  /* 底图淡化：灰度 + 半透明；深色模式反色成暗底 */
+  .leaflet-container { background:var(--bg); }
+  .leaflet-control-scale-line { background:color-mix(in srgb, var(--bg) 75%, transparent); color:var(--fg);
+                                border-color:var(--fg); font-size:11px;
+                                text-shadow:none; }   /* Leaflet 默认白色阴影在深色主题下成了重影 */
+  #bar label { color:var(--muted); display:flex; align-items:center; gap:4px; }
+  /* 日期选择 */
+  #datebox { display:flex; align-items:center; gap:4px; flex:none; }
+  #datebox button { padding:4px 6px; }
+  #datebox button:disabled { opacity:.35; }
+  #date option:disabled { color:var(--muted); }
+  #dinfo { color:var(--muted); font-size:11px; line-height:1.25; max-width:170px; overflow:hidden; display:-webkit-box;
+           -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+  #dinfo .warn { color:#d9822b; }
+  #dloading { color:var(--muted); font-size:11px; display:none; }
+  /* 窄屏：顶栏收紧，次要控件隐藏，仍放不下时可横向滚动（不撑破页面） */
+  @media (max-width: 900px) {
+    #bar { gap:6px; padding:0 8px; overflow-x:auto; overflow-y:hidden; }
+    #bar > * { flex:none; }
+    #slider { flex:1 0 120px; }
+    #zoom, #bar label, #count { display:none; }
+    #dinfo { max-width:110px; }
+    #clock { font-size:16px; min-width:52px; }
+  }
+  @media (max-width: 560px) {
+    #bar { gap:4px; padding:0 6px; }
+    #dinfo, #speed [data-v="60"], #speed [data-v="1200"] { display:none; }
+    #q { width:4.5em; }
+    #date { max-width:7.5em; }
+    #slider { flex:1 0 80px; min-width:80px; }
+    #clock { font-size:14px; min-width:44px; }
+    #bar button, #bar select, #bar input[type=text] { padding:3px 4px; }
+  }
+</style></head><body>
+<div id="map"></div>
+<div id="bar">
+  <span id="datebox" style="display:none">
+    <button id="dprev" title="前一个有数据的日期">‹</button>
+    <select id="date" title="日期"></select>
+    <button id="dnext" title="后一个有数据的日期">›</button>
+    <span id="dloading">加载中…</span>
+    <span id="dinfo"></span>
+  </span>
+  <span id="speed" class="seg" title="点速度开始播放，再点一下正在用的速度或点 ❚❚ 暂停；空格键播放/暂停"><button data-v="0" class="on" title="暂停">❚❚</button><button data-v="60" class="pre" title="60×：1 秒走 1 分钟">›</button><button data-v="300" title="300×：1 秒走 5 分钟">»</button><button data-v="1200" title="1200×：1 秒走 20 分钟">⋙</button></span>
+  <span id="clock">--:--</span>
+  <input id="slider" type="range" min="0" max="1440" step="0.5" value="480">
+  <input id="q" type="text" placeholder="车次/站名，如 G1" size="11">
+  <button id="dgbtn" title="下半屏显示运行图：选中客里表线路时显示该线，选中车次时显示它当前所在的线路"><span>运行图</span><svg class="chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2.5 7.5L6 4L9.5 7.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  <label>底图 <input id="baseop" type="range" min="0" max="1" step="0.05" style="width:80px"></label>
+  <span id="count"></span>
+  <span id="zoom" style="color:var(--muted)"></span>
+</div>
+<div id="panel"></div><div id="tip"></div><div id="auxtip"></div>
+<div id="hist"><div class="grp"><button id="histBtn" title="恢复选中"></button><button id="histDd" title="最近选中过的">▾</button></div><ul id="histList"></ul></div>
+<div id="dgwrap"><div id="dgsplit" title="拖动调整高度"></div><div id="dghint">选中一条线路或一趟车，这里显示对应线路的运行图</div><iframe id="dg" title="运行图"></iframe></div>
+<div id="legend">
+  <div class="h"><span>动车组</span><button id="mkbtn" type="button" title="切换列车地图标记：默认经典五边形 / 车型涂装极简色块">涂装</button></div>
+  <div data-lv="W" data-fx="1" hidden>复兴号</div>
+  <div data-lv="S">300+ 高铁</div>
+  <div data-lv="W">200-250</div>
+  <div data-lv="J">动集</div>
+  <div class="h">普速</div>
+  <div data-lv="ZT">Z/T 直达·特快</div>
+  <div data-lv="K">K 快速</div>
+  <div data-lv="O">普快·其他</div>
+  <div class="h">线路</div>
+  <div><i style="background:var(--r0)"></i>高铁 300–350</div>
+  <div><i style="background:var(--r1)"></i>高铁/城际 200–250</div>
+  <div><i style="background:var(--r2)"></i>普速干线 120–160</div>
+  <div><i style="background:var(--r3)"></i>其他普速</div>
+  <div><i style="background:var(--muted);height:1.5px"></i>细线 = 单线</div>
+  <div><svg width="18" height="10"><path d="M3 9L15 1" stroke="var(--muted)" stroke-width="1.6"/></svg>会让站 / 线路所</div>
+</div>
+<div id="loading">加载数据…</div>
+<script src="emu_icons.js?v=4"></script>
+<script>
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+// 列车外观（涂装）：动车组尖头，按车型速度档上色——350 档灰、250 档白、CR200J（160 档）绿；
+// 复兴号下半个车身（贴线路的一半）换成金色。普速圆头，按车次分三种绿。
+// 车型数据（可选字段）：tr.tier = 车型速度档 350/250/160，tr.fx = 是否复兴号，tr.m = 车型名。
+// 没有车型数据时按车次首字母（多车次取第一个）兜底：G 当 350 档，D/C 当 250 档。
+const LIVERIES = ['S', 'W', 'J', 'ZT', 'K', 'O'];
+const EMU = new Set(['S', 'W', 'J']);
+const liveryOf = tr => {
+  if (tr.tier) return tr.tier >= 300 ? 'S' : tr.tier >= 200 ? 'W' : 'J';
+  const h = tr.c[0];
+  // S 字头（市域/市郊）大多是动车组，没有车型数据时按 250 档画；
+  // 北京 S2 是 160 档内燃动车组（同 manual/train_class_rules.csv），按 160 档动车组画
+  if (/^S2\d\d$/.test(tr.c.split('/')[0])) return 'J';
+  return h === 'G' ? 'S' : h === 'D' || h === 'C' || h === 'S' ? 'W' : h === 'Z' || h === 'T' ? 'ZT' : h === 'K' ? 'K' : 'O';
+};
+const kindColor = tr => css('--t' + tr.lv);
+// 发布用的打包格式（viz/pack.py）：几何与线路分段放在各日共用的文件，每日文件只引用全局下标。
+//   data.geo     粗糙几何（map_geo_lo.json，lod "lo"）+ 线路分段：首屏用，点少、逐点里程按折线长度比例内插
+//   data.geo_hi  精细几何（map_geo.json，lod "hi"）：首屏之后再下载，到了原地替换 G 的各项
+// 旧打包（v1）的 map_geo.json 自带全部字段；未打包的文件（本地 data/derived/viz）没有 data.geo，原样使用。
+// 每个文件只下载、解码一次。
+const GEO_CACHE = new Map();   // url → promise → { G, geo }
+function decodeGeo(geo) {
+  const f = geo.pts, n = f.length / 2, X = new Float64Array(n), Y = new Float64Array(n);
+  for (let i = 0, x = 0, y = 0; i < n; i++) { x += f[2 * i]; y += f[2 * i + 1]; X[i] = x / 1e5; Y[i] = y / 1e5; }
+  const G = geo.geoms.map((r, gi) => {
+    let m = 0;
+    for (let a = 1; a < r.length; a += 2) m += Math.abs(r[a]);
+    const km = new Float64Array(m), lon = new Float64Array(m), lat = new Float64Array(m);
+    for (let a = 0, j = 0, prev = 0; a < r.length; a += 2) {
+      const s = prev + r[a], L = r[a + 1], d = L < 0 ? -1 : 1;
+      for (let t = 0; t < Math.abs(L); t++, j++) { const p = s + d * t; lon[j] = X[p]; lat[j] = Y[p]; }
+      prev = s + d * (Math.abs(L) - 1);
+    }
+    if (geo.gkm) { const dk = geo.gkm[gi]; for (let j = 0, k = 0; j < m; j++) { k += dk[j]; km[j] = k / 1e4; } }
+    else {                                       // 粗糙几何：首末里程准确，中间按折线长度比例
+      const [k0, len] = geo.gk[gi], c = Math.cos(lat[0] * Math.PI / 180);
+      for (let j = 1; j < m; j++) km[j] = km[j - 1] + Math.hypot((lon[j] - lon[j - 1]) * c, lat[j] - lat[j - 1]);
+      const tot = m > 1 ? km[m - 1] : 0;
+      for (let j = 0; j < m; j++) km[j] = (k0 + len * (tot > 0 ? km[j] / tot : m > 1 ? j / (m - 1) : 0)) / 1e4;
+    }
+    return { km, lon, lat };
+  });
+  geo.pts = geo.geoms = geo.gkm = geo.gk = null;      // 解码后不再需要，释放
+  return { G, geo };
+}
+// 每日文件切成两片（viz/pack.py split_day）：首片 + 其余，按首片各车的原序号合并，其余片的运行曲线下标顺延
+function mergeRest(main, rest) {
+  const off = main.profiles.length, a = main.split.a, n = main.trains.length + rest.trains.length;
+  for (const t of rest.trains) for (const lg of t.l) if (lg) lg[4] += off;
+  const trains = new Array(n), isA = new Uint8Array(n);
+  a.forEach((i, k) => { trains[i] = main.trains[k]; isA[i] = 1; });
+  for (let i = 0, j = 0; i < n; i++) if (!isA[i]) trains[i] = rest.trains[j++];
+  return { ...main, trains, profiles: main.profiles.concat(rest.profiles), split: null };
+}
+const fetchJson = url => fetch(url).then(r => { if (!r.ok) throw new Error(url + ' ' + r.status); return r.json(); });
+function preloadGeo(url) {
+  if (!url) return null;
+  if (!GEO_CACHE.has(url)) {
+    const promise = fetch(url).then(r => { if (!r.ok) throw new Error(url + ' ' + r.status); return r.json(); }).then(decodeGeo);
+    promise.catch(() => GEO_CACHE.delete(url));   // 失败了下次重拉；也抑制预拉取期间的未捕获告警
+    GEO_CACHE.set(url, promise);
+  }
+  return GEO_CACHE.get(url);
+}
+async function expandGeo(data) {
+  if (!data.geo) return data;
+  const { G, geo } = await preloadGeo(data.geo);
+  Object.assign(data, { _G: G, glines: geo.glines, gmember: geo.gmember, line_names: geo.line_names,
+                        member_sets: geo.member_sets, profiles: data.profiles || geo.profiles,
+                        profile_scale: data.profile_scale ?? geo.profile_scale });
+  return data;
+}
+// 精细几何到了：原地替换粗糙几何数组的各项（这个数组对象被各日数据共用，换日期不用再换），重算站轴、重画
+function upgradeGeo() {
+  const url = D && D.geo_hi, target = D && D._G;
+  if (!url || !target || target.hi === url || target.hiPending === url) return;
+  target.hiPending = url;
+  preloadGeo(url).then(({ G: H }) => {
+    if (H.length !== target.length) return;
+    for (let i = 0; i < H.length; i++) target[i] = H[i];
+    target.hi = url;
+    if (G === target && STBY) { stationAxes(STBY); hlCache.clear(); if (railLayer.c) railLayer.redraw(); draw(); }
+  }).catch(() => { target.hiPending = null; });
+}
+
+// 车型行内容：CR400BF-Z · 复兴号 / CR200J · 复兴号 · 动集 + 48×16 半个车头侧面图标；悬停看 train_style 原值（12306 按天车型）
+const emuTag = (tr, link = false) => {
+  if (!tr.m && !tr.dw) return '';
+  const tipTxt = `${tr.m ? '12306 当天车型 ' + (tr.ts || tr.m) : ''}${tr.dw ? (tr.m ? '；' : '') + '动卧：车型配置有卧铺车厢' : ''}`;
+  const txt = `<span class="note" title="${tipTxt}">${[tr.m, tr.fx && '复兴号', tr.dj && '动集', tr.dw && '动卧'].filter(Boolean).join(' · ')}</span>`;
+  const svg = tr.m && typeof emuHalfSvg === 'function' ? emuHalfSvg(tr.m, 16) : '';
+  if (!svg) return txt;
+  const ico = link
+    ? `<a class="emu-ico" href="emu.html#half&${encodeURIComponent(resolveEmuModel(tr.m) || tr.m)}" target="_blank" title="${tipTxt} · 点击查看侧面涂装图鉴">${svg}</a>`
+    : `<span class="emu-ico">${svg}</span>`;
+  return txt + ico;
+};
+const fmt = m => { m = Math.floor(m); const d = Math.floor(m / 1440); m -= d * 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}${d > 0 ? '⁺' + d : d < 0 ? '⁻' + (-d) : ''}`; };
+const fmtH = m => { m = Math.floor(m); const d = Math.floor(m / 1440); m -= d * 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}${d ? `<sup class="day">${d > 0 ? '+' + d : d}</sup>` : ''}`; };
+const CAM_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>';
+const EXT_SVG = '<svg class="ext" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5L8.5 3.5M8.5 3.5H4.5M8.5 3.5V7.5"/></svg>';
+// 火车Wiki 客里表营业办理限制符号释义（原样取自 kelibiao.com stationlimitationexplaination.php）
+const KB_LIM = {
+  '×': '不办理行包业务：不办理行李和包裹业务的车站',
+  '◎': '不办理包裹业务：不办理包裹业务的车站',
+  '※': '仅办理旅客乘降：仅办理旅客乘降业务的营业处所，可能是车站、线路所或乘降所',
+  '△': '不办理客运业务：不办理客运业务的处所，可能是车站或线路所',
+  '□': '办理客运业务(未公布)：未经公布却办理客运相关业务的营业处所，可能是乘降所、无轨站、代售点或车站',
+  '▲': '纪念：未经公布的铁路处所，一般作为纪念用途',
+  'G': '办理高铁快运业务：办理高铁快运(速递)业务的车站',
+  'Y': '支持中铁银通卡进出闸：支持中铁银通卡刷卡乘车的车站',
+  'E': '支持铁路E卡通进出闸：支持铁路E卡通扫码乘车的车站',
+  'I': '办理国际联运：办理铁路合作组织国际旅客联运的车站',
+  'L': '办理轮渡业务：办理国铁轮渡客运业务的车站(港口)',
+  '轮': '办理轮渡业务：办理国铁轮渡客运业务的车站(港口)',
+  '■': '彩蛋：彩蛋《我是一个粉刷匠》',
+};
+const kbLimHtml = s => s ? `<span class="kb-lim">${[...s].map(c => `<span title="${KB_LIM[c] || c}">${c}</span>`).join('')}</span>` : '';
+
+// 刷新后恢复上次的视野和时刻（只存在本机浏览器）
+const VIEW_KEY = 'railmap.view';
+let saved = null;
+try { saved = JSON.parse(localStorage.getItem(VIEW_KEY)); } catch (e) {}
+const okNum = v => typeof v === 'number' && isFinite(v);
+const map = L.map('map', { preferCanvas: true, zoomControl: true })
+  .setView(saved && okNum(saved.lat) && okNum(saved.lon) && okNum(saved.z) ? [saved.lat, saved.lon] : [33.5, 113],
+           saved && okNum(saved.z) ? saved.z : 5);
+let saveTimer = null;
+function saveView() {                 // 节流：最多每秒写一次
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => { saveTimer = null; const c = map.getCenter();
+    try { localStorage.setItem(VIEW_KEY, JSON.stringify({ lat: +c.lat.toFixed(5), lon: +c.lng.toFixed(5), z: map.getZoom(), t: +T.toFixed(2),
+                                                         ...(curDate ? { date: curDate } : {}) })); } catch (e) {} }, 1000);
+}
+map.on('moveend', () => { saveView(); writeHash(); });
+// 底图：OpenFreeMap 矢量瓦片（OpenMapTiles 结构）+ 自定义极简样式。
+// 只画陆地（背景）、山体阴影、水体、河流、城市建成区；国界、道路、地名一律不画。
+// 山体阴影用 AWS 公开的 Terrarium 高程瓦片（Mapzen Terrain Tiles），z12 以上放大复用。颜色取 CSS 变量，随深浅主题切换。
+// 瓦片地址集中在这一行，发布时 `python -m railmap.viz.pack --tiles 配置.json` 会整行替换（换国内镜像 / 自托管用）。
+// omt：TileJSON 地址，或含 {z}/{x}/{y} 的瓦片模板；dem：Terrarium 编码的瓦片模板；attr：底图版权说明（HTML）。
+const BASE_TILES = {"omt":"https://tiles.openfreemap.org/planet","dem":"https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png","attr":"<a href=\"https://openfreemap.org\">OpenFreeMap</a> &copy; OpenMapTiles &copy; OpenStreetMap contributors · 地形 <a href=\"https://registry.opendata.aws/terrain-tiles/\">Mapzen Terrain Tiles</a>"};
+let baseOpacity = 1;
+try { const v = localStorage.getItem('railmap.baseOpacity2'); if (v !== null) baseOpacity = +v; } catch (e) {}
+const baseStyle = () => ({
+  version: 8,
+  sources: {
+    omt: { type: 'vector', ...(BASE_TILES.omt.includes('{z}') ? { tiles: [BASE_TILES.omt], maxzoom: 14 } : { url: BASE_TILES.omt }) },
+    dem: { type: 'raster-dem', encoding: 'terrarium', tileSize: 256, maxzoom: 12, tiles: [BASE_TILES.dem] },
+  },
+  layers: [
+    { id: 'land', type: 'background', paint: { 'background-color': css('--bLand') } },
+    { id: 'hills', type: 'hillshade', source: 'dem',
+      paint: { 'hillshade-exaggeration': +css('--bShadeK'), 'hillshade-shadow-color': css('--bShade'),
+               'hillshade-highlight-color': css('--bLit'), 'hillshade-accent-color': css('--bShade'),
+               'hillshade-illumination-direction': 315 } },
+    { id: 'urban', type: 'fill', source: 'omt', 'source-layer': 'landuse', minzoom: 8,
+      filter: ['in', ['get', 'class'], ['literal', ['residential', 'commercial', 'industrial', 'retail']]],
+      paint: { 'fill-color': css('--bUrban') } },
+    { id: 'water', type: 'fill', source: 'omt', 'source-layer': 'water', paint: { 'fill-color': css('--bWater') } },
+    { id: 'river', type: 'line', source: 'omt', 'source-layer': 'waterway', minzoom: 7,   // 更小时太密，易与普速线混
+      filter: ['in', ['get', 'class'], ['literal', ['river', 'canal']]],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': css('--bRiver'),
+               'line-width': ['interpolate', ['exponential', 1.4], ['zoom'], 6, 0.5, 10, 1.2, 14, 3] } },
+  ],
+});
+// 插件不会把瓦片源自带的版权信息带进 Leaflet，手动写
+const base = L.maplibreGL({ style: baseStyle(), interactive: false,   // 插件只认 attributionControl.customAttribution
+  attributionControl: { customAttribution: BASE_TILES.attr } }).addTo(map);
+map.attributionControl.addAttribution('时刻 <a href="https://www.12306.cn">12306</a> · 里程 <a href="https://kelibiao.com/">火车wiki</a>');
+map.attributionControl.addAttribution('列车位置为推断结果，非官方信息');
+L.control.scale({ position: 'bottomright', metric: true, imperial: false, maxWidth: 120 }).addTo(map);
+const setBaseOpacity = v => { base.getContainer().style.opacity = v; };
+setBaseOpacity(baseOpacity);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => base.getMaplibreMap().setStyle(baseStyle()));
+
+let D, G = [], T = 480, playing = false, sel = null, hover = null, selSt = null;
+let focus = null, focusSel = null, focusSt = null;   // 选中车次 / 车站时的“关注”车次集合（选中客里表线路时不叠加车站可达范围）
+function setFocus() {
+  const st = selLine ? null : selSt;
+  focusSel = sel; focusSt = st;
+  focus = sel ? new Set([sel]) : st ? new Set(st.ev.map(e => e.tr)) : null;
+  if (railLayer.c) railLayer.redraw();
+}
+// URL 锚点记录日期、高亮对象（车次、车站、线路）、时刻、视口坐标与分屏状态
+// 支持直观中文（如 #station=北京南、#line=京沪高速线、#train=G1）与简写（如 #北京南、#京沪高速线、#G1）
+// 默认今天不带 date=，历史/未来日期才带 date=YYYY-MM-DD
+let STBY = {};
+let KB = null, KBST = {}, selLine = null, pendingHash = false;
+const hlCache = new Map();
+
+// 境外车站：国名只加在显示层，数据里的站名不变（国别按站点坐标是否在中国境外判定，名单取自 docs/09-国际列车.md 与数据里实际出现的境外站）
+const FOREIGN = { 同登: '越南', 磨丁: '老挝', 孟赛: '老挝', 琅勃拉邦: '老挝', 万荣: '老挝', 万象: '老挝', 新义州青年: '朝鲜', 扎门乌德: '蒙古', 后贝加尔斯克: '俄罗斯' };
+const dn = name => (FOREIGN[name] || '') + name;
+
+function findLineId(v, allowNumericId = true) {
+  if (!KB || !v) return null;
+  try { v = decodeURIComponent(String(v)).trim(); } catch (e) { v = String(v).trim(); }
+  if (allowNumericId && KB.lines[v]) return v;
+  for (const [id, ln] of Object.entries(KB.lines)) {
+    if (ln.n === v) return id;
+  }
+  const vNorm = v.replace(/线$/, '');
+  for (const [id, ln] of Object.entries(KB.lines)) {
+    if (ln.n.replace(/线$/, '') === vNorm || ln.n === v + '线' || ln.n + '线' === v) return id;
+  }
+  const ALIAS = {
+    '京沪高铁': '京沪高速线',
+    '京广高铁': '京广高铁',
+    '京包客专': '京包客专线',
+    '石太客专': '石太客专线',
+    '兰新客专': '兰新客专线',
+    '成渝高铁': '成渝客专',
+  };
+  if (ALIAS[v]) {
+    for (const [id, ln] of Object.entries(KB.lines)) {
+      if (ln.n === ALIAS[v]) return id;
+    }
+  }
+  if (vNorm.length >= 2) {
+    for (const [id, ln] of Object.entries(KB.lines)) {
+      if (ln.n.includes(vNorm)) return id;
+    }
+  }
+  return null;
+}
+
+function findStation(v) {
+  if (!v || !STBY) return null;
+  try { v = decodeURIComponent(String(v)).trim(); } catch (e) { v = String(v).trim(); }
+  if (STBY[v]) return STBY[v];
+  const noZhan = v.replace(/站$/, '');
+  if (STBY[noZhan]) return STBY[noZhan];
+  for (const [name, country] of Object.entries(FOREIGN)) {
+    if (v === country + name || v === name) return STBY[name] || null;
+  }
+  return null;
+}
+
+function isLikelyTrainCode(v) {
+  if (!v) return false;
+  try { v = decodeURIComponent(String(v)).trim().toUpperCase(); } catch (e) { v = String(v).trim().toUpperCase(); }
+  if (D && D.trains && runsOf(v).length > 0) return true;
+  return /^[A-Z0-9\/]+$/.test(v) && (/[A-Z]/.test(v) || /^\d{3,5}$/.test(v));
+}
+
+const hashOf = () => {
+  const parts = [];
+
+  // 直接写入名称，不带 line=/station=/train= 前缀
+  if (sel) {
+    parts.push(sel.c.split('/')[0]);
+    if (sel.od) parts.push('od=' + sel.od);
+  } else if (selLine && KB && KB.lines[selLine]) {
+    parts.push(KB.lines[selLine].n);
+  } else if (selSt) {
+    parts.push(selSt.name);
+  }
+
+  if (okNum(T)) {
+    parts.push('time=' + fmtH(T));
+  }
+
+  if (!sel && !selSt && !selLine) {
+    const c = map.getCenter(), z = map.getZoom();
+    parts.push(`@${+c.lat.toFixed(4)},${+c.lng.toFixed(4)},${z}z`);
+  }
+
+  if (splitOn) parts.push('split=1');
+  if (mkOn) parts.push('mk=1');
+
+  const isDefaultDate = !curDate || (DATES && curDate === DATES.default);
+  if (DATES && curDate && !isDefaultDate) parts.push('date=' + curDate);
+
+  return parts.join('&');
+};
+
+const parseHash = () => {
+  let raw = '';
+  try { raw = decodeURIComponent(location.hash.slice(1)); } catch (e) { raw = location.hash.slice(1); }
+  if (!raw) return {};
+  const out = {};
+
+  const viewMatch = raw.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)(?:,(\d+(?:\.\d+)?))?z?/);
+  if (viewMatch) {
+    out.view = { lat: +viewMatch[1], lon: +viewMatch[2], z: viewMatch[3] ? +viewMatch[3] : null };
+  }
+
+  const pairs = raw.split('&');
+  for (const part of pairs) {
+    if (!part) continue;
+    const eq = part.indexOf('=');
+    if (eq < 0) {
+      if (part.startsWith('@')) continue;
+      const token = part.trim();
+      if (!token) continue;
+      const st = findStation(token);
+      if (st) {
+        out.kind = 'station'; out.v = st.name;
+        continue;
+      }
+      if (D && D.trains && runsOf(token).length > 0) {
+        out.kind = 'train'; out.v = token;
+        continue;
+      }
+      const lid = findLineId(token, false);
+      if (lid) {
+        out.kind = 'line'; out.v = lid;
+        continue;
+      }
+      if (isLikelyTrainCode(token)) {
+        out.kind = 'train'; out.v = token;
+        continue;
+      }
+      out.unresolved = token;
+      continue;
+    }
+    const key = part.slice(0, eq).trim();
+    const val = part.slice(eq + 1).trim();
+
+    if (key === 'date' || key === 'd') out.date = val;
+    else if (key === 'od') out.od = val;
+    else if (key === 'train' || key === 'tr' || key === 'c') { out.kind = 'train'; out.v = val; }
+    else if (key === 'station' || key === 'st') { out.kind = 'station'; out.v = val; }
+    else if (key === 'line' || key === 'ln') { out.kind = 'line'; out.v = findLineId(val, true) || val; }
+    else if (key === 'time' || key === 't') {
+      if (val.includes(':')) {
+        const [hh, mm] = val.split(':').map(Number);
+        if (!isNaN(hh) && !isNaN(mm)) out.time = Math.max(0, Math.min(1440, hh * 60 + mm));
+      } else {
+        const num = Number(val);
+        if (!isNaN(num) && num >= 0 && num <= 1440) out.time = num;
+      }
+    } else if (key === 'split' || key === 'diagram' || key === 'dg') {
+      out.split = val === '1' || val === 'true';
+    } else if (key === 'mk' || key === 'marker') {
+      out.mk = val === '1' || val === 'true';
+    } else if (key === 'z' || key === 'zoom') {
+      const z = Number(val);
+      if (!isNaN(z)) out.view = Object.assign(out.view || {}, { z });
+    } else if (key === 'loc') {
+      const p = val.split(',').map(Number);
+      if (p.length >= 2 && !isNaN(p[0]) && !isNaN(p[1])) {
+        out.view = Object.assign(out.view || {}, { lat: p[0], lon: p[1], z: p[2] && !isNaN(p[2]) ? p[2] : null });
+      }
+    }
+  }
+
+  return out;
+};
+
+let hashReady = false;
+let lastHashObjKey = null;
+let hashTimer = null;
+
+function writeHash(forceImmediate = false) {
+  if (!hashReady || switching) return;
+  const currentObjKey = (sel ? 't:' + sel.c + (sel.od || '') : selLine ? 'l:' + selLine : selSt ? 's:' + selSt.name : '') + '|' + (splitOn ? '1' : '0') + '|' + (mkOn ? '1' : '0');
+  const objChanged = currentObjKey !== lastHashObjKey;
+
+  if (playing && !objChanged && !forceImmediate) return;
+
+  if (forceImmediate || objChanged) {
+    if (hashTimer) { clearTimeout(hashTimer); hashTimer = null; }
+    lastHashObjKey = currentObjKey;
+    const h = hashOf();
+    if (h !== location.hash.slice(1)) {
+      history.replaceState(null, '', h ? '#' + h : location.pathname + location.search);
+    }
+    return;
+  }
+
+  if (hashTimer) clearTimeout(hashTimer);
+  hashTimer = setTimeout(() => {
+    hashTimer = null;
+    if (playing) return;
+    const h = hashOf();
+    if (h !== location.hash.slice(1)) {
+      history.replaceState(null, '', h ? '#' + h : location.pathname + location.search);
+    }
+  }, 400);
+}
+
+function readHash() {
+  if (!D) return;
+  const h = parseHash();
+
+  const targetDate = h.date || (hashReady && DATES ? DATES.default : null);
+  if (targetDate && targetDate !== curDate && DATES && dateEntry(targetDate) && dateEntry(targetDate).selectable) {
+    loadDate(targetDate).then(ok => { if (ok) readHash(); });
+    return;
+  }
+
+  if (h.unresolved && !h.kind) {
+    if (!KB) { pendingHash = true; return; }
+    const lid = findLineId(h.unresolved, false);
+    if (lid) {
+      h.kind = 'line'; h.v = lid;
+    } else if (isLikelyTrainCode(h.unresolved)) {
+      h.kind = 'train'; h.v = h.unresolved;
+    }
+  }
+
+  let tr = null, st = null, ln = null;
+  if (h.kind === 'train') {
+    tr = findRun(h.v, h.od);
+  } else if (h.kind === 'station') {
+    st = findStation(h.v);
+  } else if (h.kind === 'line') {
+    if (!KB) { pendingHash = true; return; }
+    ln = findLineId(h.v);
+  }
+
+  if (h.time != null && okNum(h.time) && Math.abs(T - h.time) > 0.01) {
+    setT(h.time);
+  }
+  if (h.split !== undefined && h.split !== splitOn) {
+    setSplit(h.split);
+  }
+  if (h.mk !== undefined && h.mk !== mkOn) {
+    setMk(h.mk);
+  }
+
+  hashReady = true;
+
+  if (h.view) {
+    const curZ = map.getZoom();
+    const targetZ = h.view.z != null ? h.view.z : curZ;
+    if (h.view.lat != null && h.view.lon != null) {
+      map.setView([h.view.lat, h.view.lon], targetZ);
+    } else if (h.view.z != null && h.view.z !== curZ) {
+      map.setZoom(h.view.z);
+    }
+  }
+
+  if (tr === sel && st === selSt && ln === selLine) return;
+  sel = tr || null; selSt = st || null; setLine(ln);
+
+  if (ln) {
+    const hl = lineHighlight(ln);
+    if (hl && (!h.view || (h.view.lat == null && h.view.lon == null))) {
+      map.fitBounds([[hl.bbox[1], hl.bbox[0]], [hl.bbox[3], hl.bbox[2]]], { padding: [30, 30] });
+    }
+  }
+  if (!sel && !selSt) $('panel').style.display = 'none';
+  if (sel) {
+    const s0 = sel.s[0][2];
+    if (s0 != null && (T < s0 || T > sel.s[sel.s.length - 1][1]) && h.time == null) {
+      setT(s0 + 1);
+    }
+  }
+  if (sel || selSt) {
+    const c = sel ? null : [selSt.lat, selSt.lon];
+    if (c && !map.getBounds().contains(c) && (!h.view || (h.view.lat == null && h.view.lon == null))) {
+      map.setView(c, Math.max(map.getZoom(), 9));
+    }
+  }
+  draw();
+}
+addEventListener('hashchange', readHash);
+
+// 客里表（map_kelibiao.json）：线路、车站所属线路与接算里程
+function setLine(lid) {
+  if (lid === selLine) return;
+  selLine = lid;
+  setFocus();
+}
+let topMaxLen = null;
+function lineHighlight(lid) {                 // {names: Set(底图线名下标), bbox: [w, s, e, n]}
+  if (hlCache.has(lid)) return hlCache.get(lid);
+  const ln = KB && KB.lines[lid]; let res = null;
+  if (ln) {
+    if (!topMaxLen) {
+      topMaxLen = new Map();
+      for (const l of Object.values(KB.lines)) if (l.osm && l.osm[0])
+        topMaxLen.set(l.osm[0], Math.max(topMaxLen.get(l.osm[0]) || 0, l.len || 0));
+    }
+    const idx = new Map(KB.rail_names.map((n, i) => [n, i])), L = ln.len || 0;
+    // 次要线名若已是更长干线的主线名（如达成线末段借襄渝线、并行段被拉到京沪高铁），不按全线外接框整名高亮，免得画出分叉
+    const own = ln.osm.filter((n, i) => i === 0 || (topMaxLen.get(n) || 0) <= L);
+    const names = new Set(own.map(n => idx.get(n)).filter(i => i != null));
+    let w = 180, e = -180, s = 90, n = -90;
+    for (const [name] of ln.st) { const st = STBY[name]; if (!st) continue;
+      w = Math.min(w, st.lon); e = Math.max(e, st.lon); s = Math.min(s, st.lat); n = Math.max(n, st.lat); }
+    if (w <= e) res = { names, bbox: [w - 0.08, s - 0.08, e + 0.08, n + 0.08] };
+  }
+  hlCache.set(lid, res); return res;
+}
+const kmTxt = km => km == null ? '' : 'K' + (Math.round(km * 10) / 10);
+// 单线区间（map.py 的 lines[id].ss / single）：来源说明、区间集合、面板标题行的“部分单线：A–B、C–D”
+const SG_SRC = { csv: '单线清单（维基）', link: '联络线', osm_tracks1: 'OSM tracks=1' };
+const sgSrcTxt = s => (s || '').split(',').filter(Boolean).map(x => SG_SRC[x] || x).join('、');
+function lineSingle(ln) {
+  const ss = ln.ss || [], whole = ss.find(x => !x[0] && !x[1]), sec = new Map();
+  for (const [a, b, src] of ss) if (a) { sec.set(a + '|' + b, src); sec.set(b + '|' + a, src); }
+  const srcOf = g => whole ? whole[2] : sec.get(g[1] + '|' + g[2]);   // 区间（客里表 legs 项）的单线来源，复线为 undefined
+  let txt = '';
+  if (ln.single === 'all') txt = '单线';
+  else if (ln.single === 'part') {
+    const runs = []; let cur = null;   // 连续的单线区间合并成段（同一支线内、前一区间止站 = 后一区间起站）
+    for (const g of ln.legs) {
+      if (srcOf(g) == null) { cur = null; continue; }
+      if (cur && cur.zx === g[0] && cur.to === g[1]) cur.to = g[2]; else { cur = { zx: g[0], from: g[1], to: g[2] }; runs.push(cur); }
+    }
+    const lab = runs.length ? runs.map(r => dn(r.from) + '–' + dn(r.to)) : ss.filter(x => x[0]).map(x => dn(x[0]) + '–' + dn(x[1]));
+    txt = '部分单线：' + lab.slice(0, 4).join('、') + (lab.length > 4 ? ` 等 ${lab.length} 段` : '');
+  }
+  return { srcOf, txt };
+}
+let linePanelKey = null;
+function linePanel() {
+  const key = selLine + '|' + (selSt ? selSt.name : '') + '|' + (lineBackTr ? lineBackTr.c + '|' + runOd(lineBackTr) : '') + '|' + (curDate || '');
+  if (key === linePanelKey) return;
+  linePanelKey = key;
+  const ln = KB.lines[selLine], legEnd = new Map(ln.legs.map(g => [g[0] + '|' + g[2], g])), sgl = lineSingle(ln);
+  let lastZx = 0;
+  const rows = ln.st.map(([name, km, zx, flag, lim, ju, code]) => {
+    const g = legEnd.get(zx + '|' + name), head = zx !== lastZx ? `<tr><td colspan="5" class="note">支线 ${zx}</td></tr>` : '';
+    lastZx = zx;
+    const iv = g ? `${g[3] ?? '?'}${g[4] != null ? ` / ${Math.round(g[4] * 10) / 10}` : ''}${g[5] && g[5] !== 'yes' ? ` <span class="warn" title="客里表里程${g[5] === 'no' ? '不可信' : '待复核'}">⚠</span>` : ''}` : '';
+    const sg = g && sgl.srcOf(g) != null ? `<span class="sg" title="单线区间：${sgSrcTxt(sgl.srcOf(g))}">单</span>` : '';
+    const jsz = flag & 1;
+    const nm = STBY[name] ? `<a data-st="${name}"${jsz ? ' class="jsz" title="接算站"' : ''}>${dn(name)}</a>` : jsz ? `<u class="jsz" title="接算站">${dn(name)}</u>` : dn(name);
+    const post = flag & 2 ? '<span class="kb-Post" title="线路所">*</span>' : '';
+    const cd = code ? ` <span class="note" title="车站电报略号 ${code}">-${code}</span>` : '';
+    const ele = showLnEle && STBY[name] && STBY[name].ele != null ? `<span class="note" style="margin-left:4px" title="车站海拔 ${STBY[name].ele} m">${STBY[name].ele}m</span>` : '';
+    return `${head}<tr${selSt && selSt.name === name ? ' class="cur"' : ''}><td>${kbLimHtml(lim)}</td><td class="main">${nm}${post}${cd}${ele}</td><td class="note">${ju || ''}</td><td class="num">${km != null ? Math.round(km * 10) / 10 : ''}</td><td class="num">${iv}${sg}</td></tr>`;
+  }).join('');
+  const pn = $('panel');
+  pn.style.display = 'flex';
+  const backHtml = lineBackTr ? `<div style="margin-bottom:2px"><a class="back note" data-back="tr">← 返回 ${lineBackTr.c}</a></div>`
+    : selSt ? `<div style="margin-bottom:2px"><a class="back note" data-back="1">← 返回 ${dn(selSt.name)}</a></div>` : '';
+  const dgTr = lineBackTr ? '&' + lineBackTr.c.split('/')[0] + (lineBackTr.od ? '&od=' + lineBackTr.od : '') : '';
+  const dgDt = typeof curDate !== 'undefined' && curDate && (!DATES || curDate !== DATES.default) ? '&date=' + curDate : '';
+  pn.innerHTML = `<span class="x" id="close">✕</span>${backHtml}
+    <h3>${ln.n} <span class="note">${ln.p ? `· ${ln.p} · ` : '· '}全长 ${ln.len ?? '?'} km</span> <span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px"><a class="cam${showLnEle ? ' on' : ''}" data-line-ele="1" title="${showLnEle ? '隐藏车站海拔' : '显示车站海拔'}" style="width:auto;padding:0 5px;font-size:11px">海拔</a><a class="note" target="_blank" href="diagram.html#${encodeURIComponent(ln.n)}${dgTr}${dgDt}">运行图 ↗</a></span></h3>
+    ${sgl.txt ? `<div class="note" style="margin-bottom:2px"><span class="sg" style="margin-left:0" title="单线来源：${sgSrcTxt([...new Set((ln.ss || []).flatMap(x => x[2].split(',')))].join(','))}">单</span> ${sgl.txt}</div>` : ''}
+    ${ln.osm.length ? `<div class="note" style="margin-bottom:2px">OSM：${ln.osm.join('、')}</div>` : ''}
+    <div class="tw"><table><thead><tr><th>限</th><th>站名</th><th>局</th><th class="num" title="距本线起始站里程 (km)">自首站</th><th class="num" title="相邻两站间：客里表里程 / OSM路径公里">区间</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="foot"><span><u class="jsz">红下划线</u>接算站 · <b>*</b>线路所 · <span class="warn">⚠</span>未采信 · <span class="sg" style="margin-left:0">单</span>单线区间</span><span class="more" title="符号与标记规则同火车Wiki客里表（×不办行包 ◎不办包裹 ※仅乘降 △不办客运 G高铁快运 Y银通卡 E铁路e卡通）；区间列格式为“客里表里程 / OSM路径公里”，⚠ 表示客里表与 OSM 路径长度不符、未采信的区间。数据：火车wiki">详情...</span></div>`;
+  const curRow = pn.querySelector('tr.cur'), tw = pn.querySelector('.tw');
+  if (curRow && tw) {
+    const hh = tw.querySelector('thead').offsetHeight, wr = tw.getBoundingClientRect(), rr = curRow.getBoundingClientRect();
+    tw.scrollTop = rr.top - wr.top - hh - (tw.clientHeight - hh - rr.height) / 2;
+  }
+  $('close').onclick = () => { setLine(null); lineBackTr = null; if (!selSt) $('panel').style.display = 'none'; draw(); };
+}
+// 车次面板里的线路名（OSM 线名）→ 客里表线路：OSM 线名对得上的线路里，取含当前区间两端车站最多的；对不上返回 null
+let lineBackTr = null;               // 从车次面板点进线路时记下该车，线路面板显示“← 车次”可返回
+const kbLineCache = new Map();
+function kbLineFor(name, tr, st) {
+  if (!KB || !name || !st) return null;
+  if (st.lid && KB.lines[st.lid]) return String(st.lid);
+  const li = st.li ?? st.i, a = tr.s[li] && tr.s[li][0], b = tr.s[li + 1] && tr.s[li + 1][0];
+  const key = name + '|' + tr.c + '|' + runOd(tr) + '|' + a + '|' + b;
+  if (kbLineCache.has(key)) return kbLineCache.get(key);
+  const trSt = tr._stSet || (tr._stSet = new Set(tr.s.map(x => x[0])));
+  let best = null, bs = -1;
+  for (const [lid, ln] of Object.entries(KB.lines)) {
+    const k = ln.osm.indexOf(name); if (k < 0) continue;
+    const names = ln._stSet || (ln._stSet = new Set(ln.st.map(x => x[0])));
+    const endHits = (names.has(a) ? 1 : 0) + (names.has(b) ? 1 : 0);
+    let trHits = 0; for (const s of trSt) if (names.has(s)) trHits++;
+    const exact = ln.n === name ? 2 : (name.length > 1 && ln.n.startsWith(name.slice(0, -1)) ? 1 : 0);
+    if (endHits === 0 && trHits < 2 && exact < 2) continue;
+    const effEnd = (trHits <= 1 && k > 0 && !exact) ? 0 : endHits;
+    const sc = effEnd * 100 + Math.min(trHits, 5) * 10 + exact * 15 + (k === 0 ? 5 : 0) + Math.min(4, (ln.len || 0) / 1000);
+    if (sc > bs) { bs = sc; best = lid; }
+  }
+  kbLineCache.set(key, best); return best;
+}
+// 面板里的线路名、站名、返回链接、跟随按钮、客里表折叠条、海拔开关：用 pointerdown 委托（播放时面板每帧重绘，click 可能落空）
+let kbSubOpen = true, showTrEle = false, showLnEle = false;
+try {
+  kbSubOpen = localStorage.getItem('railmap.kbSub') !== '0';
+  showTrEle = localStorage.getItem('railmap.showTrEle') === '1';
+  showLnEle = localStorage.getItem('railmap.showLnEle') === '1';
+} catch (e) {}
+const CHEV_R_SVG = '<svg class="chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4.5 2.5L8 6L4.5 9.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+$('panel').addEventListener('pointerdown', e => {
+  const a = e.target.closest('a[data-line], a[data-st], a[data-pan], a[data-back], a[data-run], a[data-follow], [data-kb-toggle], [data-tr-ele], [data-line-ele], [data-t]'); if (!a) return;
+  e.preventDefault();
+  if (a.dataset.t != null) { jumpT(+a.dataset.t); return; }
+  if (a.dataset.kbToggle) { kbSubOpen = !kbSubOpen; try { localStorage.setItem('railmap.kbSub', kbSubOpen ? '1' : '0'); } catch (err) {} stationPanel(); return; }
+  if (a.dataset.trEle) { showTrEle = !showTrEle; try { localStorage.setItem('railmap.showTrEle', showTrEle ? '1' : '0'); } catch (err) {} trPanelId = ''; panel(); return; }
+  if (a.dataset.lineEle) { showLnEle = !showLnEle; try { localStorage.setItem('railmap.showLnEle', showLnEle ? '1' : '0'); } catch (err) {} linePanelKey = null; linePanel(); return; }
+  if (a.dataset.follow) { follow = !follow && !!sel; followTr = follow ? sel : null; draw(); return; }
+  if (a.dataset.pan) { panToStation(a.dataset.pan); return; }   // 时刻表站名：只移动地图，不改选中
+  if (a.dataset.run) {                // 换到同车次另一始发日的列车；跟随中就接着跟
+    const r = panelRuns[+a.dataset.run]; if (!r || r === sel) return;
+    sel = r; if (follow) followTr = r;
+    const st = state(r, T);
+    if (st && !follow && !map.getBounds().contains(st.pos)) map.setView(st.pos, Math.max(map.getZoom(), 8));
+  }
+  else if (a.dataset.line) { lineBackTr = sel || null; sel = null; setLine(a.dataset.line); const hl = lineHighlight(selLine);
+    if (hl) map.fitBounds([[hl.bbox[1], hl.bbox[0]], [hl.bbox[3], hl.bbox[2]]], { padding: [30, 30] }); }
+  else if (a.dataset.st) { const st = STBY[a.dataset.st]; sel = null; selSt = st; setLine(null);
+    if (!map.getBounds().contains([st.lat, st.lon])) map.setView([st.lat, st.lon], Math.max(map.getZoom(), 10)); }
+  else if (a.dataset.back === 'tr') { sel = lineBackTr; lineBackTr = null; setLine(null); }   // 返回原来的车次
+  else setLine(null);
+  draw();
+});
+// 地图移到某站（保留当前选中；正在跟随就停止跟随）
+function panToStation(name) {
+  const st = STBY[name]; if (!st) return;
+  follow = false;
+  map.setView([st.lat, st.lon], Math.max(map.getZoom(), 10));
+  draw();
+}
+let ST = [];                         // 车站：{name, lat, lon, n, code, ev: [{tr, a, d}]}
+
+// 列车图层：独立 canvas，每帧重绘
+const Overlay = L.Layer.extend({
+  onAdd(m) { this.c = L.DomUtil.create('canvas', ''); this.c.style.position = 'absolute'; this.c.style.pointerEvents = 'none';
+    m.getPanes().overlayPane.appendChild(this.c); m.on('move zoom resize viewreset', this.reset, this); this.reset(); },
+  reset() { const s = map.getSize(), dpr = devicePixelRatio || 1;
+    L.DomUtil.setPosition(this.c, map.containerPointToLayerPoint([0, 0]));
+    this.c.width = s.x * dpr; this.c.height = s.y * dpr; this.c.style.width = s.x + 'px'; this.c.style.height = s.y + 'px';
+    this.ctx = this.c.getContext('2d'); this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0); draw(); },
+});
+const overlay = new Overlay();
+
+// 路网底图：按等级上色，独立 canvas，只在视图变化时重画（不随动画每帧重画）
+// 路网分粗细两版（viz/pack.py）：z ≤ RAILS_LO_MAXZ 或精细版还没到时画粗糙版；放大过 RAILS_LO_MAXZ 才下载精细版。
+// 未打包（本地）只有一版，两者是同一份
+let RAILS_LO = null, RAILS_HI = null, railsHiPromise = null;   // [{cls, pts: Float32Array [lon,lat,...], bbox, ni, single: 0|1}]
+const RAILS_LO_MAXZ = 6;
+const railsAt = z => (z > RAILS_LO_MAXZ && RAILS_HI) || RAILS_LO || RAILS_HI || [];
+function parseRails(rj) {
+  const lines = Array.isArray(rj) ? rj : rj.lines, d4 = !Array.isArray(rj) && rj.enc === 'd4';   // 旧格式是纯数组
+  let x = 0, y = 0;
+  const rails = lines.map(([cls, f, ni, sg]) => {
+    let pts;
+    if (d4) {                                  // 1e-4 度整数差分，跨折线连续
+      pts = new Float32Array(f.length);
+      for (let j = 0; j < f.length; j += 2) { x += f[j]; y += f[j + 1]; pts[j] = x / 1e4; pts[j + 1] = y / 1e4; }
+    } else pts = Float32Array.from(f);
+    let w = 180, e = -180, s = 90, n = -90;
+    for (let j = 0; j < pts.length; j += 2) { w = Math.min(w, pts[j]); e = Math.max(e, pts[j]); s = Math.min(s, pts[j + 1]); n = Math.max(n, pts[j + 1]); }
+    return { cls, pts, bbox: [w, s, e, n], ni: ni ?? -1, single: sg ? 1 : 0 };
+  });
+  const aux = (Array.isArray(rj) ? [] : rj.aux || []).map(([name, lon, lat, kind, ax, ay, lns, sw]) => ({ name, lon, lat, kind, ax, ay, lines: lns || [], sw }));
+  return { rails, aux, lo: !Array.isArray(rj) && rj.lod === 'lo' };
+}
+function loadRailsHi() {
+  if (railsHiPromise || RAILS_HI || !(DATES && DATES.rails_lo && DATES.rails)) return;
+  railsHiPromise = fetch(DATES.rails).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(rj => {
+    const { rails, aux } = parseRails(rj);
+    RAILS_HI = rails; AUX = aux;
+    if (railLayer.c) railLayer.redraw();
+    draw();
+  }).catch(() => { railsHiPromise = null; });
+}
+let AUX = [];                        // 非客运站 {name, lon, lat, kind: 0 会让站 | 1 线路所, ax, ay（线路走向单位向量）, lines, sw: 1 有道岔证据 | 0 无}
+const SINGLE_K = 0.55;               // 单线区段线宽倍数（z ≥ 8）
+const RailLayer = L.Layer.extend({
+  onAdd(m) { this.c = L.DomUtil.create('canvas', ''); this.c.style.position = 'absolute'; this.c.style.pointerEvents = 'none';
+    m.getPanes().overlayPane.appendChild(this.c); m.on('moveend zoomend resize viewreset', this.redraw, this); this.redraw(); },
+  redraw() {
+    const s = map.getSize(), dpr = devicePixelRatio || 1;
+    L.DomUtil.setPosition(this.c, map.containerPointToLayerPoint([0, 0]));
+    this.c.width = s.x * dpr; this.c.height = s.y * dpr; this.c.style.width = s.x + 'px'; this.c.style.height = s.y + 'px';
+    const ctx = this.c.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const b = map.getBounds().pad(0.05), W = b.getWest(), E = b.getEast(), S = b.getSouth(), N = b.getNorth();
+    const z = map.getZoom(), z0 = map.getZoom(), origin = map.getPixelOrigin(), topLeft = map.containerPointToLayerPoint([0, 0]);
+    if (z > RAILS_LO_MAXZ) loadRailsHi();
+    const RAILS = railsAt(z);
+    const width = z <= 5 ? [0.6, 0.45, 0.35, 0.3] : z <= 6 ? [0.9, 0.7, 0.5, 0.35] : z <= 8 ? [1.5, 1.1, 0.8, 0.6] : [2.4, 1.9, 1.4, 1];
+    const colors = [css('--r0'), css('--r1'), css('--r2'), css('--r3')];
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.globalAlpha = focus || selLine ? 0.3 : 1;   // 有选中时路网压暗
+    for (const cls of [3, 2, 1, 0]) {          // 低等级先画，高铁压在上面
+      if (z <= 5 && cls === 3) continue;       // 全国视图不画其他普速
+      // z ≥ 8 单线区段细一档（SINGLE_K 倍线宽）：先画复线、再画单线
+      for (const sg of z >= 8 ? [0, 1] : [null]) {
+        ctx.strokeStyle = colors[cls]; ctx.lineWidth = width[cls] * (sg ? SINGLE_K : 1); ctx.beginPath();
+        for (const r of RAILS) {
+          if (r.cls !== cls || r.bbox[2] < W || r.bbox[0] > E || r.bbox[3] < S || r.bbox[1] > N) continue;
+          if (sg !== null && r.single !== sg) continue;
+          const p = r.pts;
+          for (let j = 0; j < p.length; j += 2) {
+            const q = map.project([p[j + 1], p[j]], z0);
+            const x = q.x - origin.x - topLeft.x, y = q.y - origin.y - topLeft.y;
+            j ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+          }
+        }
+        ctx.stroke();
+      }
+    }
+    // 火车轮渡（粤海轮渡线）：普速线颜色的虚线
+    ctx.strokeStyle = colors[2]; ctx.lineWidth = width[2]; ctx.setLineDash([4, 4]); ctx.beginPath();
+    for (const r of RAILS) {
+      if (r.cls !== 4 || r.bbox[2] < W || r.bbox[0] > E || r.bbox[3] < S || r.bbox[1] > N) continue;
+      const p = r.pts;
+      for (let j = 0; j < p.length; j += 2) {
+        const q = map.project([p[j + 1], p[j]], z0);
+        const x = q.x - origin.x - topLeft.x, y = q.y - origin.y - topLeft.y;
+        j ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    if (focus) this.drawFocus(ctx, b);
+    if (selLine) this.drawLine(ctx, b);
+  },
+  // 选中的客里表线路：底图中 OSM 线名属于该线、且在该线车站范围内的线段，用高亮色画
+  drawLine(ctx, b) {
+    const hl = lineHighlight(selLine); if (!hl) return;
+    const W = b.getWest(), E = b.getEast(), S = b.getSouth(), N = b.getNorth();
+    const z0 = map.getZoom(), origin = map.getPixelOrigin(), topLeft = map.containerPointToLayerPoint([0, 0]);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath();
+    for (const r of railsAt(z0)) {
+      if (!hl.names.has(r.ni)) continue;
+      const bb = r.bbox;
+      if (bb[2] < W || bb[0] > E || bb[3] < S || bb[1] > N) continue;
+      if (bb[2] < hl.bbox[0] || bb[0] > hl.bbox[2] || bb[3] < hl.bbox[1] || bb[1] > hl.bbox[3]) continue;
+      const p = r.pts;
+      for (let j = 0; j < p.length; j += 2) {
+        const q = map.project([p[j + 1], p[j]], z0), x = q.x - origin.x - topLeft.x, y = q.y - origin.y - topLeft.y;
+        j ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+    }
+    ctx.strokeStyle = css('--bg'); ctx.lineWidth = z0 >= 9 ? 6 : 4.5; ctx.stroke();
+    ctx.strokeStyle = css('--hl'); ctx.lineWidth = z0 >= 9 ? 3.5 : 2.5; ctx.stroke();
+  },
+  // 关注车次走过的全部线路（车站：所有停靠车次的全程，即可直达的线路）
+  drawFocus(ctx, b) {
+    const gids = new Set();
+    for (const tr of focus) for (const leg of tr.l) if (leg) gids.add(leg[0]);
+    const z = map.getZoom(), origin = map.getPixelOrigin(), topLeft = map.containerPointToLayerPoint([0, 0]);
+    const W = b.getWest(), E = b.getEast(), S = b.getSouth(), N = b.getNorth();
+    ctx.beginPath();
+    for (const gi of gids) {
+      const g = G[gi];
+      let lx = NaN, ly = NaN, out = true;
+      for (let j = 0; j < g.km.length; j++) {
+        const lon = g.lon[j], lat = g.lat[j], inside = lon >= W && lon <= E && lat >= S && lat <= N;
+        if (!inside && out && j + 1 < g.km.length) {   // 视野外的点只保留进出视野的那一个
+          const nl = g.lon[j + 1], na = g.lat[j + 1];
+          if (!(nl >= W && nl <= E && na >= S && na <= N)) { lx = NaN; continue; }
+        }
+        out = !inside;
+        const q = map.project([lat, lon], z), x = q.x - origin.x - topLeft.x, y = q.y - origin.y - topLeft.y;
+        if (isNaN(lx)) ctx.moveTo(x, y);
+        else if (Math.abs(x - lx) + Math.abs(y - ly) < 1 && j + 1 < g.km.length) continue;   // 不足 1 像素的点跳过
+        else ctx.lineTo(x, y);
+        lx = x; ly = y;
+      }
+    }
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const fw = z <= 5 ? 1.5 : z <= 7 ? 2.2 : 3;   // 缩小时关注线路也变细
+    ctx.strokeStyle = css('--bg'); ctx.lineWidth = fw + 2.5; ctx.stroke();      // 底色描边，与路网分开
+    ctx.strokeStyle = css(sel ? '--sel' : '--hl'); ctx.lineWidth = fw; ctx.stroke();
+  },
+});
+const railLayer = new RailLayer();
+const zoomEl = document.getElementById('zoom');
+const showZoom = () => { zoomEl.textContent = 'z' + Math.round(map.getZoom()); };
+map.on('zoomend', showZoom); showZoom();
+
+function geomPos(g, km) {           // 在几何上按 km 插值
+  const k = g.km; let lo = 0, hi = k.length - 1;
+  if (km <= k[0]) return [g.lat[0], g.lon[0]];
+  if (km >= k[hi]) return [g.lat[hi], g.lon[hi]];
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (k[m] <= km) lo = m; else hi = m; }
+  const u = (km - k[lo]) / (k[hi] - k[lo] || 1);
+  return [g.lat[lo] + u * (g.lat[hi] - g.lat[lo]), g.lon[lo] + u * (g.lon[hi] - g.lon[lo])];
+}
+function geomEle(g, km) {           // 在几何上按 km 插值高程（米）
+  if (!g.ele) return null;
+  const k = g.km; let lo = 0, hi = Math.min(k.length - 1, g.ele.length - 1);
+  if (hi < 0) return null;
+  if (km <= k[0]) return g.ele[0];
+  if (km >= k[hi]) return g.ele[hi];
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (k[m] <= km) lo = m; else hi = m; }
+  const u = (km - k[lo]) / (k[hi] - k[lo] || 1);
+  const v0 = g.ele[lo], v1 = g.ele[hi];
+  if (v0 == null || v1 == null || isNaN(v0) || isNaN(v1)) return null;
+  return Math.round(v0 + u * (v1 - v0));
+}
+
+// 车头朝向：取前后各 h 处的点连线。h 至少 0.4 km，缩小时按屏幕像素放大（约 HEAD_PX 像素），
+// 否则 z5 一像素约 4 km、0.4 km 内的小弯会让车头频繁转向；位置仍在真实轨道上，只是朝向按大尺度走向
+const HEAD_KM = 0.4, HEAD_PX = 12;
+const headKm = () => Math.max(HEAD_KM, HEAD_PX * 40075.017 * Math.cos(35 * Math.PI / 180) / (256 * 2 ** map.getZoom()));
+function at(leg, km) {               // 区间内 km 处的位置及前后点
+  // 先把 km 限制在几何实际覆盖的范围内（化简后末折点可能略短于区间全长），
+  // 否则停站时前后两点会同落在末折点上，算不出朝向
+  const g = G[leg[0]];
+  let k0 = g.km[0], kN = g.km[g.km.length - 1];
+  const k = Math.min(Math.max(km, k0), kN);
+  if (leg[5]) for (const w of leg[5]) if (w[4] === '技术停车') {
+    const sw = Math.min(Math.max(w[0] * leg[3], k0), kN);
+    if (k <= sw) kN = Math.min(kN, sw); else k0 = Math.max(k0, sw);
+  }
+  const hk = headKm(), h = Math.min(hk, (kN - k0) / 2 || hk);
+  let kb = k - h, ka = k + h;
+  if (kb < k0) { ka += k0 - kb; kb = k0; }
+  if (ka > kN) { kb -= ka - kN; ka = kN; }
+  return { pos: geomPos(g, k), back: geomPos(g, Math.max(k0, kb)), ahead: geomPos(g, Math.min(kN, ka)), ele: geomEle(g, k) };
+}
+// 区间内 t 时刻的里程与速度：与运行图折线一致按图定起止、推定停车及通过校准折点分段，仅在停站/待避两端 tau 分钟内做局部加减速过渡
+function legRun(leg, t) {
+  const km = leg[3], ws = leg[5];
+  let t0 = leg[1], s0 = 0, t1 = leg[2], s1 = km, stop0 = true, stop1 = true;
+  if (ws) for (const w of ws) {
+    const sw = w[0] * km, isStop = w[2] > w[1] + 0.05;
+    if (t <= w[1]) { t1 = w[1]; s1 = sw; stop1 = isStop; break; }
+    if (isStop && t <= w[2]) return { km: sw, kmh: 0 };
+    t0 = w[2]; s0 = sw; stop0 = isStop;
+  }
+  const dt = t1 - t0, ds = s1 - s0;
+  if (dt <= 0 || ds <= 0) return { km: s0, kmh: 0 };
+  const u = Math.max(0, Math.min(dt, t - t0));
+  const tau0 = stop0 ? Math.min(1.5, dt * 0.25) : 0, tau1 = stop1 ? Math.min(1.5, dt * 0.25) : 0;
+  const vm = ds / (dt - 0.5 * (tau0 + tau1));
+  if (u < tau0) return { km: s0 + vm * (u * u / (2 * tau0)), kmh: vm * 60 * (u / tau0) };
+  if (u > dt - tau1) { const r = dt - u; return { km: s1 - vm * (r * r / (2 * tau1)), kmh: vm * 60 * (r / tau1) }; }
+  return { km: s0 + vm * (u - tau0 / 2), kmh: vm * 60 };
+}
+const TERMINAL_DWELL = 5, BLEND_KM = 0.3;   // 始发前、终到后额外显示的停车分钟数；出站咽喉股道过渡距离（km）
+function state(tr, t) {            // 返回 {pos, back, ahead, moving, i, li, km}；i 为当前/刚离开的停站下标，li/km 为所在区间及区间内里程
+  const S = tr.s, n = S.length;
+  const start = S[0][2], end = S[n - 1][1];
+  if (start == null || end == null || t < start - TERMINAL_DWELL || t > end + TERMINAL_DWELL) return null;
+  if (t < start) {                   // 始发前：停在始发站，朝出站方向
+    const r = tr.l[0] ? at(tr.l[0], 0) : null;
+    return r && { ...r, moving: false, i: 0, li: 0, km: 0 };
+  }
+  if (t > end) {                     // 终到后：停在终到站，朝进站方向
+    const prev = tr.l[n - 2];
+    const r = prev ? at(prev, prev[3]) : null;
+    return r && { ...r, moving: false, i: n - 1, li: n - 2, km: prev[3] };
+  }
+  for (let i = 0; i < n; i++) {
+    const a = S[i][1] ?? S[i][2], d = S[i][2] ?? S[i][1];
+    if (t >= a && t <= d) {          // 停站：朝向取进站方向（始发站取出站方向）
+      const prev = tr.l[i - 1], next = tr.l[i];
+      const r = prev ? at(prev, prev[3]) : next ? at(next, 0) : null;
+      return r && { ...r, moving: false, i, li: next ? i : i - 1, km: next ? 0 : prev[3] };   // 停站时线路取出站方向
+    }
+    if (i < n - 1) {
+      const leg = tr.l[i], d2 = S[i][2], a2 = S[i + 1][1];
+      if (d2 != null && a2 != null && t > d2 && t < a2) {
+        if (!leg) return null;
+        const run = legRun(leg, t), r = at(leg, run.km), prev = tr.l[i - 1];
+        if (prev && run.km < BLEND_KM) {   // 进出站挂在不同平行股道时，出站前 300 m 由停站位置平滑过渡到出站股道
+          const rp = at(prev, prev[3]), r0 = at(leg, 0), dlat = rp.pos[0] - r0.pos[0], dlon = rp.pos[1] - r0.pos[1];
+          if (Math.abs(dlat) + Math.abs(dlon) < 0.004) {
+            const w = 1 - run.km / BLEND_KM;
+            r.pos = [r.pos[0] + w * dlat, r.pos[1] + w * dlon];
+            if ((rp.ahead[0] - rp.back[0]) * (r0.ahead[0] - r0.back[0]) + (rp.ahead[1] - rp.back[1]) * (r0.ahead[1] - r0.back[1]) > 0) {
+              r.back = [r.back[0] + w * (rp.back[0] - r0.back[0]), r.back[1] + w * (rp.back[1] - r0.back[1])];
+              r.ahead = [r.ahead[0] + w * (rp.ahead[0] - r0.ahead[0]), r.ahead[1] + w * (rp.ahead[1] - r0.ahead[1])];
+            }
+          }
+        }
+        return { ...r, moving: true, i, kmh: run.kmh, li: i, km: run.km };
+      }
+    }
+  }
+  return null;
+}
+
+// 车身画成侧视的半边：沿行进方向的对称轴切开只保留左半边（中国国铁左侧行车），
+// 底边贴着线路、车头朝前，于是同一线路上的上下行分在线路两侧。
+// 两种车身后半段都等高；动车组前半段斜线收成尖头，普速前半段四分之一椭圆收成圆头。
+// 尖头（车头占 NP）面积 (1−NP/2)·len·w、圆头（车头占一半）(0.5+π/8)·len·w，尖头整体放大 PK 倍使两者面积相同。
+const TRAIN_FONT = '"DIN Alternate", "Bahnschrift", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif';
+// 返回标签位置，以及画下半个车身的函数 lower()（复兴号用）、车内写车次的函数 drawText()（z≥12 用）。
+function trainShape(ctx, p, back, ahead, size, round, txt, fx) {
+  // 朝向用不取整的投影坐标算：latLngToContainerPoint 会取整到像素，
+  // 缩小时前后两点（相距 0.4 km）不足 1 像素，方向会退化成上下左右
+  const z = map.getZoom(), b = map.project(back, z), a = map.project(ahead, z);
+  let ang = Math.atan2(a.y - b.y, a.x - b.x);
+  if (!isFinite(ang) || (a.x === b.x && a.y === b.y)) ang = -Math.PI / 2;
+  const NP = 0.65, PK = Math.sqrt((0.5 + Math.PI / 8) / (1 - NP / 2)), k = round ? 1 : PK;
+  const c = Math.cos(ang), s = Math.sin(ang);
+  const lx = s, ly = -c;                                  // 行进方向的左法向（屏幕坐标 y 向下）
+  const fk = txt ? 0.2 : 0.5;                             // 车内写字时复兴号金带收窄到底边 20%，给车次留出净空
+  let w, len, nose, fs = 0, tw = 0, gh = 0, asc = 0, desc = 0, vc = 0, noseClear = 0;
+  if (txt) {
+    w = size;
+    fs = Math.round(w * (fx ? 0.9 : 1.02));               // 车次全是无下伸的大写字母与数字，字号放大让字高撑满车身
+    ctx.font = `bold ${fs}px ${TRAIN_FONT}`;
+    const m = ctx.measureText(txt);
+    tw = m.width;
+    asc = m.actualBoundingBoxAscent || fs * 0.72;
+    desc = m.actualBoundingBoxDescent || 0;
+    gh = asc + desc;
+    vc = w * (fx ? (fk + 1) / 2 : 0.5);
+    const vTop = Math.min(0.95, (vc + gh / 2 + 0.6) / w); // 字框上沿占车高的比例，据此算车头斜面/弧面让开的距离
+    nose = w * (round ? 0.92 : 1.25);
+    noseClear = round ? nose * (1 - Math.sqrt(Math.max(0, 1 - vTop * vTop))) + 1.2 : nose * vTop + 0.8;
+    len = Math.max(w * 1.5, 2.2 + tw + noseClear);
+  } else {
+    w = size * 0.9 * k;
+    len = size * 2 * k;
+    nose = len * (round ? 0.5 : NP);                      // 车头长度：尖头更长，角度更尖
+  }
+  // 锚点在车身轴线上：车内写字时居中略偏后（0.45），平时距车尾 30%
+  const ANCHOR = txt ? 0.45 : 0.3, tx = p.x - c * len * ANCHOR, ty = p.y - s * len * ANCHOR;
+  const P = (u, v) => [tx + c * u + lx * v, ty + s * u + ly * v];   // u 沿车身向前，v 向外
+  // 从车尾起笔、在车尾收笔：车头处不出现首尾相接的极短线段（粗描边时会被尖角接头拉出长刺）
+  ctx.beginPath();
+  ctx.moveTo(...P(0, 0));                                 // 车尾（在线路上）
+  ctx.lineTo(...P(0, w));                                 // 车尾外侧角
+  ctx.lineTo(...P(len - nose, w));
+  if (round) {
+    // 椭圆参数角 θ：点 = 中心 + nose·cosθ·前向 − w·sinθ·外法向；θ 从 −π/2（车顶）到 0（车头）
+    ctx.ellipse(...P(len - nose, 0), nose, w, ang, -Math.PI / 2, 0);
+  } else ctx.lineTo(...P(len, 0));                        // 车头（在线路上）
+  ctx.closePath();
+  const midX = tx + c * len / 2, midY = ty + s * len / 2;
+  return {
+    label: { x: midX + lx * (w + 4), y: midY + ly * (w + 4) },     // 车身外侧中点再往外一点
+    hit(q) {
+      const u = (q.x - tx) * c + (q.y - ty) * s, v = (q.x - tx) * lx + (q.y - ty) * ly;
+      return u >= -3 && u <= len + 3 && v >= -3 && v <= w + 3;
+    },
+    lower() {                                             // 下半个车身：v 从 0 到 w·fk
+      ctx.beginPath();
+      ctx.moveTo(...P(0, 0)); ctx.lineTo(...P(len, 0));
+      if (round) ctx.ellipse(...P(len - nose, 0), nose, w, ang, 0, -Math.asin(fk), true);
+      else ctx.lineTo(...P(len - nose * fk, w * fk));
+      ctx.lineTo(...P(0, w * fk));
+      ctx.closePath();
+    },
+    drawText(color) {
+      if (!txt) return;
+      const uc = (len - noseClear + 2.2) / 2;
+      const [cx, cy] = P(uc, vc);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(ang);                                    // 字底永远贴铁轨一侧（v=0），从车尾读向车头
+      ctx.font = `bold ${fs}px ${TRAIN_FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = color;
+      ctx.fillText(txt, 0, (asc - desc) / 2);             // 按实际字形像素高度垂直居中（不留小写字母下伸空位）
+      ctx.restore();
+    },
+  };
+}
+
+// 车型涂装极简色块 Marker：24×12 纯几何轮廓 + 2~3 色块（底边 y=10.5 贴着线路、车头 x=1 朝前，左半侧朝外）。
+function drawTrainMarker(ctx, p, back, ahead, r, tr, isSel, dim, z, selc, bg, grey) {
+  const b = map.project(back, z), a = map.project(ahead, z);
+  let ang = Math.atan2(a.y - b.y, a.x - b.x);
+  if (!isFinite(ang) || (a.x === b.x && a.y === b.y)) ang = -Math.PI / 2;
+  const c = Math.cos(ang), s = Math.sin(ang);
+  const lx = s, ly = -c;
+  const w = r * 1.05, len = w * (22 / 8);
+  const tx = p.x - c * len * 0.3, ty = p.y - s * len * 0.3;
+  const sx = len / 22, sy = w / 8;
+  const m = typeof getMarker2D === 'function' ? getMarker2D(tr._mk || (tr._mk = markerModelForTrain(tr))) : null;
+  if (m) {
+    ctx.save();
+    ctx.transform(-sx * c, -sx * s, -sy * lx, -sy * ly, tx + 23 * sx * c + 10.5 * sy * lx, ty + 23 * sx * s + 10.5 * sy * ly);
+    const invS = 1 / Math.sqrt(sx * sy);
+    if (isSel) {
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 3.2 * invS;
+      ctx.strokeStyle = selc;
+      ctx.stroke(m.bodyPath);
+    }
+    ctx.fillStyle = dim ? grey : m.baseFill;
+    ctx.fill(m.bodyPath);
+    if (!dim && z >= 6) {
+      ctx.save();
+      ctx.clip(m.bodyPath);
+      for (const [p2d, col] of m.layers) {
+        ctx.fillStyle = col;
+        ctx.fill(p2d);
+      }
+      ctx.restore();
+    }
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = (isSel ? 0.9 : z >= 9 ? 0.72 : 0.55) * invS;
+    ctx.strokeStyle = dim ? bg : (css('--tEdge') || '#525c68');
+    ctx.stroke(m.bodyPath);
+    ctx.restore();
+  }
+  const midX = tx + c * len / 2, midY = ty + s * len / 2;
+  return {
+    label: { x: midX + lx * (w + 4), y: midY + ly * (w + 4) },
+    hit(q) {
+      const u = (q.x - tx) * c + (q.y - ty) * s, v = (q.x - tx) * lx + (q.y - ty) * ly;
+      return u >= -3 && u <= len + 3 && v >= -3 && v <= w + 3;
+    },
+  };
+}
+
+let mkOn = false;
+function setMk(on) {
+  mkOn = !!on;
+  $('mkbtn').classList.toggle('on', mkOn);
+  drawLegend();
+  draw();
+  writeHash(true);
+}
+$('mkbtn').onclick = () => setMk(!mkOn);
+
+// 图例图标：随「涂装」开关切换经典五边形与极简色块 Marker（车尾在左、车头朝右，底边为线路）
+function drawLegend() {
+  const mapLv = { S: 'CR400AF', W: 'CRH2A', J: 'CR200J1', ZT: 'HXD1D', K: 'DF4D', O: 'DF4B' };
+  for (const el of document.querySelectorAll('#legend [data-lv]')) {
+    const oldSvg = el.querySelector('svg');
+    if (oldSvg) oldSvg.remove();
+    const lv = el.dataset.lv;
+    if (mkOn && typeof emuMarkerSvg === 'function') {
+      const m = el.dataset.fx ? 'CR400BF' : (mapLv[lv] || 'CR400AF');
+      el.insertAdjacentHTML('afterbegin', emuMarkerSvg(m, 1, true));
+    } else {
+      const emu = EMU.has(lv);
+      const body = emu ? 'M1,10.5 L23,10.5 L8.7,2.5 L1,2.5 Z' : 'M2,10 L22,10 A10,7 0 0 0 12,3 L2,3 Z';
+      const stripe = el.dataset.fx ? '<path d="M1,10.5 L23,10.5 L15.85,6.5 L1,6.5 Z" fill="var(--tGold)"/>' : '';
+      el.insertAdjacentHTML('afterbegin', `<svg width="24" height="12" viewBox="0 0 24 12"><path d="${body}" fill="var(--t${lv})"
+        stroke="${emu ? 'var(--tEdge)' : 'none'}" stroke-width="0.8"/>${stripe}</svg>`);
+    }
+  }
+}
+
+// 车次标签避让：选中/悬停的先放；默认位置与已放标签（含车站名）重叠时上下交替挪一行，
+// 挪开的标签用细线连回车身；普通标签挪 MAX_TRY 次仍无空位就不画，选中的总会画。
+// 帧间记忆防抖：
+// 1. 左右朝向防抖（SIDE_HYST）：近南北/浅弯处 lab.x ≈ a.p.x 时锁定上一帧左右侧，避免标签整宽横跳；
+// 2. 排序防抢位：同优先级下「上帧已显示 > 偏移量 |dy| 小 > 在屏时间久（born 早）」先放，保证原位(dy=0)车次先占座，
+//    不会因数组顺序靠后被移位车次误判原位空闲而周期性互换位置；
+// 3. 空间迟滞 + 时间防抖：保持旧槽位用宽松边距（KEEP_PAD），选新槽位用标准边距（NEW_PAD），回原位用严格边距（RET_PAD）
+//    且须在当前槽位呆满 HOLD_MS、原位连续空出 RETURN_MS 才回位；被迫换位时优先选同侧就近槽位；
+// 4. 显隐防闪烁 + 平滑过渡：短暂被挤掉的标签在 GRACE_MS 内保留记忆，恢复显示需连续空出 SHOW_MS；
+//    槽位或朝向变化时对相对车身的偏移做指数阻尼平滑（TAU_MS），消除单帧跳变。
+let labMem = new Map(), labMemZoom = null, labAnimRaf = 0;
+const trMemKey = tr => tr.c + (tr.od ? '@' + tr.od : '');
+function drawTrainLabels(ctx, labels) {
+  const z = map.getZoom(), now = performance.now();
+  const RETURN_MS = 750, HOLD_MS = 450, SHOW_MS = 180, GRACE_MS = 1500, TAU_MS = 80;
+  const SIDE_HYST = 3, KEEP_PAD = -1, NEW_PAD = 0.5, RET_PAD = 2;
+  if (z !== labMemZoom) { labMem.clear(); labMemZoom = z; }
+  for (const [k, v] of labMem) if (now - v.lastSeen > GRACE_MS) labMem.delete(k);
+  if (!labels.length) return;
+  const tfs = z <= 10 ? 10 : 11, H = tfs + 2, MAX_TRY = 8, placed = stLabelBoxes.slice();
+  const hit = b => placed.some(q => b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1]);
+  ctx.font = tfs + 'px system-ui'; ctx.textBaseline = 'middle';
+  const bg = css('--bg'), fg = css('--fg'), mu = css('--muted');
+  const baseCand = [];
+  for (let k = 0; k <= MAX_TRY; k++) baseCand.push((k % 2 ? 1 : -1) * Math.ceil(k / 2) * H);   // 0, +H, −H, +2H, −2H …
+  for (const it of labels) it.m = labMem.get(it.key = trMemKey(it.a.tr));
+  labels.sort((x, y) => x.pri - y.pri
+    || ((y.m && y.m.vis ? 1 : 0) - (x.m && x.m.vis ? 1 : 0))
+    || ((x.m ? Math.abs(x.m.dy) : 1e9) - (y.m ? Math.abs(y.m.dy) : 1e9))
+    || ((x.m ? x.m.born : Infinity) - (y.m ? y.m.born : Infinity)));
+  let gliding = false;
+  for (const { a, lab, isSel, key, m: old } of labels) {
+    const txt = a.tr.c.split('/')[0], w = ctx.measureText(txt).width;
+    const sideDx = lab.x - a.p.x;
+    const left = old && old.left !== undefined ? (old.left ? sideDx >= -SIDE_HYST : sideDx > SIDE_HYST) : sideDx >= 0;
+    const box = (dy, pad = 0) => {
+      const x0 = left ? lab.x : lab.x - w, y = lab.y + dy;
+      return [x0 - 1 - pad, y - H / 2 - pad, x0 + w + 1 + pad, y + H / 2 + pad];
+    };
+    let dy, freeSince = null, slotSince = old ? old.slotSince : now;
+    if (old && old.vis && !hit(box(old.dy, KEEP_PAD))) {
+      dy = old.dy;
+      if (dy !== 0 && now - slotSince >= HOLD_MS && !hit(box(0, RET_PAD))) {
+        freeSince = old.freeSince ?? now;
+        if (now - freeSince >= RETURN_MS) { dy = 0; freeSince = null; slotSince = now; }
+      }
+    } else {
+      const cand = old ? baseCand.slice().sort((d1, d2) =>
+        (Math.abs(d1) + 1.15 * Math.abs(d1 - old.dy)) - (Math.abs(d2) + 1.15 * Math.abs(d2 - old.dy))) : baseCand;
+      dy = cand.find(d => !hit(box(d, NEW_PAD)));
+      if (dy !== undefined && (!old || dy !== old.dy)) slotSince = now;
+    }
+    if (dy === undefined) {
+      if (!isSel) {
+        if (old) { old.vis = false; old.showSince = null; old.freeSince = null; old.lastSeen = now; }
+        continue;
+      }
+      dy = old ? old.dy : 0;
+    }
+    if (!isSel && old && !old.vis) {                        // 刚被挤掉的普通标签需连续空出 SHOW_MS 才重新显示
+      const showSince = old.showSince ?? now;
+      if (now - showSince < SHOW_MS) {
+        old.showSince = showSince; old.dy = dy; old.left = left; old.lastSeen = now;
+        continue;
+      }
+    }
+    const targetOx = lab.x - a.p.x, targetOy = lab.y - a.p.y + dy;
+    const dt = old && old.vis && old.lastSeen != null ? Math.max(0, now - old.lastSeen) : 999;
+    const alpha = (old && old.vis && old.ox !== undefined && dt <= 250) ? (1 - Math.exp(-Math.max(1, dt) / TAU_MS)) : 1;
+    let ox = alpha < 1 ? old.ox + (targetOx - old.ox) * alpha : targetOx;
+    let oy = alpha < 1 ? old.oy + (targetOy - old.oy) * alpha : targetOy;
+    if (Math.hypot(targetOx - ox, targetOy - oy) < 0.2) { ox = targetOx; oy = targetOy; }
+    else gliding = true;
+    const rx = a.p.x + ox, ry = a.p.y + oy;
+    const bTarget = box(dy, 0);
+    const rx0 = left ? rx : rx - w, bRender = [rx0 - 1, ry - H / 2, rx0 + w + 1, ry + H / 2];
+    placed.push([Math.min(bTarget[0], bRender[0]), Math.min(bTarget[1], bRender[1]),
+                 Math.max(bTarget[2], bRender[2]), Math.max(bTarget[3], bRender[3])]);
+    labMem.set(key, {
+      dy, left, ox, oy, vis: true,
+      born: old ? old.born : now,
+      slotSince, freeSince, showSince: null, lastSeen: now,
+    });
+    if (Math.abs(ry - lab.y) >= 1.5) {                      // 引线：车身外侧 → 标签靠车一端
+      ctx.beginPath(); ctx.moveTo(lab.x + (left ? -3 : 3), lab.y); ctx.lineTo(rx, ry);
+      ctx.lineWidth = 0.8; ctx.strokeStyle = mu; ctx.stroke();
+    }
+    ctx.textAlign = left ? 'left' : 'right';
+    ctx.lineWidth = 3; ctx.strokeStyle = bg; ctx.strokeText(txt, rx, ry);
+    ctx.fillStyle = fg; ctx.fillText(txt, rx, ry);
+  }
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  if (gliding && !playing && !labAnimRaf) {
+    labAnimRaf = requestAnimationFrame(() => { labAnimRaf = 0; draw(); });
+  }
+}
+
+// 不取整的屏幕坐标：latLngToContainerPoint 会取整到像素，缩小时（z5 一像素约 4 km）
+// 每帧移动不足一像素的列车会停几帧再跳一像素，看起来一顿一顿的
+function toPx(ll) {
+  const q = map.project(ll, map.getZoom()), o = map.getPixelOrigin(), tl = map.containerPointToLayerPoint([0, 0]);
+  return L.point(q.x - o.x - tl.x, q.y - o.y - tl.y);
+}
+
+let active = [];
+// ===== 分屏运行图 =====
+// 下半屏用 iframe 嵌 diagram.html，通过它的网址锚点（date、line、train、od）切换线路并同步高亮车次：
+// 选中客里表线路就显示该线；选中车次时显示它当前所在线路（随车换线）；都没有时保留上一条
+let splitOn = false, dgHash = null, dgLine = null, dgPin = null;
+try { splitOn = localStorage.getItem('railmap.split') === '1'; } catch (e) {}
+function dgLineNow() {
+  if (selLine) return selLine;
+  if (!sel) return null;
+  if (dgPin && dgPin.tr === sel) return dgPin.line;
+  const st = state(sel, T), ln = st && lineAt(sel, st);
+  if (ln && (ln.lid || ln.name)) { const lid = ln.lid || kbLineFor(ln.name, sel, st); if (lid) return lid; }
+  for (let li = 0; li < sel.l.length; li++) {
+    const leg = sel.l[li], segs = leg && D.glines && D.glines[leg[0]];
+    if (!segs) continue;
+    for (const g of segs) if (g[1] >= 0) {
+      const lid = kbLineFor(D.line_names[g[1]], sel, { i: li, li });
+      if (lid) return lid;
+    }
+  }
+  return null;
+}
+function syncDiagram() {
+  if (!splitOn) return;
+  const lid = dgLineNow() || dgLine;
+  if (!lid) { $('dghint').style.display = ''; return; }
+  dgLine = lid;
+  const tr = sel || lineBackTr;
+  const isDefDt = !curDate || (DATES && curDate === DATES.default);
+  const lineName = KB && KB.lines[lid] ? KB.lines[lid].n : lid;
+  const trPart = tr ? '&' + tr.c.split('/')[0] + (tr.od ? '&od=' + tr.od : '') : '';
+  const dtPart = !isDefDt && curDate ? '&date=' + curDate : '';
+  const h = `${encodeURIComponent(lineName)}${trPart}${dtPart}`;
+  if (h === dgHash) return;
+  dgHash = h; $('dghint').style.display = 'none';
+  const f = $('dg');
+  if (!f.getAttribute('src')) f.src = 'diagram.html#' + h;
+  else try { f.contentWindow.location.hash = h; } catch (e) { f.src = 'diagram.html#' + h; }
+}
+// 地图当前时刻同步给运行图（画一条竖线）：时刻或日期变了才发；运行图页加载完也会来要一次
+let dgTimeKey = null;
+function syncDgTime(force) {
+  if (!splitOn) return;
+  const f = $('dg'); if (!f.getAttribute('src') || !f.contentWindow) return;
+  const key = curDate + '|' + T;
+  if (!force && key === dgTimeKey) return;
+  dgTimeKey = key;
+  f.contentWindow.postMessage({ type: 'railmap-time', t: T, date: curDate }, location.origin);
+}
+$('dg').addEventListener('load', () => syncDgTime(true));
+addEventListener('message', e => {
+  if (e.origin !== location.origin || !e.data) return;
+  if (e.data.type === 'railmap-time-req') syncDgTime(true);
+  else if (e.data.type === 'railmap-date' && e.data.date && e.data.date !== curDate) loadDate(e.data.date);
+});
+function setSplit(on) {
+  splitOn = on;
+  if (on) dgHash = null;
+  document.body.classList.toggle('split', on);
+  $('dgbtn').classList.toggle('on', on);
+  try { localStorage.setItem('railmap.split', on ? '1' : '0'); } catch (e) {}
+  map.invalidateSize({ animate: false });
+  draw();
+  if (on) {
+    const f = $('dg');
+    if (f.getAttribute('src') && f.contentWindow) f.contentWindow.postMessage({ type: 'railmap-fit-sel' }, location.origin);
+  }
+  writeHash(true);
+}
+$('dgbtn').onclick = () => setSplit(!splitOn);
+// 运行图里点车站名：选中该站并移到地图视野中（保留已选的客里表线路，取消选中的车次）
+addEventListener('message', e => {
+  if (e.origin !== location.origin || !e.data || e.data.type !== 'railmap-station') return;
+  const st = STBY[e.data.name], ll = st ? [st.lat, st.lon] : e.data.ll ? [e.data.ll[1], e.data.ll[0]] : null;
+  if (!ll) return;
+  if (st) { sel = null; selSt = st; }
+  map.setView(ll, Math.max(map.getZoom(), 11));
+  draw();
+});
+// 运行图侧栏时刻表点站名：只移动地图到该站；点时刻：跳到该时刻
+addEventListener('message', e => {
+  if (e.origin !== location.origin || !e.data) return;
+  if (e.data.type === 'railmap-jump-t' && okNum(e.data.t)) { jumpT(e.data.t); return; }
+  if (e.data.type !== 'railmap-pan') return;
+  if (STBY[e.data.name]) panToStation(e.data.name);
+  else if (e.data.ll) { follow = false; map.setView([e.data.ll[1], e.data.ll[0]], Math.max(map.getZoom(), 10)); draw(); }
+});
+// 运行图侧栏点“地图”：在地图上选中（高亮）该车次，必要时把时间拨到它运行期间并移到视野中；
+// 下半屏运行图保持原线路不跳走（dgPin），直到在地图上换选别的对象
+addEventListener('message', e => {
+  if (e.origin !== location.origin || !e.data || e.data.type !== 'railmap-train') return;
+  const tr = findRun(e.data.code, e.data.od); if (!tr) return;
+  dgPin = e.data.line ? { tr, line: e.data.line } : null;
+  sel = tr; selSt = null; lineBackTr = null; setLine(null);
+  const s0 = tr.s[0][2]; if (s0 != null && (T < s0 || T > tr.s[tr.s.length - 1][1])) setT(s0 + 1);
+  const st = state(tr, T);
+  if (st && !map.getBounds().contains(st.pos)) map.setView(st.pos, Math.max(map.getZoom(), 8));
+  draw();
+});
+try { const h = localStorage.getItem('railmap.dgH'); if (h) document.body.style.setProperty('--dgH', h); } catch (e) {}
+$('dgsplit').addEventListener('pointerdown', e => {
+  e.preventDefault(); document.body.classList.add('dgdrag');
+  const H = innerHeight - 56;
+  const move = ev => { const px = Math.min(H - 120, Math.max(120, innerHeight - 56 - ev.clientY));
+    document.body.style.setProperty('--dgH', px + 'px'); map.invalidateSize({ animate: false }); };
+  const up = () => { document.body.classList.remove('dgdrag'); removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+    try { localStorage.setItem('railmap.dgH', getComputedStyle(document.body).getPropertyValue('--dgH').trim()); } catch (e) {}
+    draw(); };
+  addEventListener('pointermove', move); addEventListener('pointerup', up);
+});
+
+// 跟随：车次面板里点“跟随”，每帧把地图中心移到该车；拖动地图、取消或换选车次即停止
+let follow = false, drawing = false;
+function followSel() {
+  if (follow && sel !== followTr) follow = false;
+  if (!follow) return;
+  const st = state(sel, T); if (!st) return;
+  const p = map.latLngToContainerPoint(st.pos), c = map.getSize().divideBy(2);
+  if (Math.abs(p.x - c.x) > 0.5 || Math.abs(p.y - c.y) > 0.5) map.setView(st.pos, map.getZoom(), { animate: false });
+}
+let followTr = null;
+
+function draw() {
+  if (!D || !overlay.ctx || drawing) return;
+  syncSlider();
+  writeHash();
+  drawing = true;
+  try { followSel(); drawFrame(); syncDiagram(); syncDgTime(); trackHist(); } finally { drawing = false; }
+}
+// ===== 选中历史 =====
+// 每次重绘比较当前选中对象（车次 / 客里表线路 / 车站）；换了就把上一个记进历史（同一对象只留最新一条，最多 12 条，存 localStorage）。
+// 什么都没选中时右上角显示最近一条，点击恢复；▾ 列出全部历史
+let HIST = [], histCur = null, histShown = null;
+try { HIST = JSON.parse(localStorage.getItem('railmap.hist') || '[]'); } catch (e) { HIST = []; }
+const histKey = h => h ? h.k + ':' + h.v + (h.od ? '@' + h.od : '') : '';
+function histNow() {
+  if (sel) return { k: 'train', v: sel.c.split('/')[0], od: sel.od || null, label: sel.c, sub: `${sel.s[0][0]} → ${sel.s[sel.s.length - 1][0]}${sel.od ? ' · ' + sel.od.slice(5) + ' 始发' : ''}` };
+  if (selLine) return { k: 'line', v: selLine, label: (KB && KB.lines[selLine] && KB.lines[selLine].n) || selLine };
+  if (selSt) {
+    const kl = KBST[selSt.name] || [];
+    const ju = (kl.find(r => r.ju) || {}).ju || '';
+    return { k: 'station', v: selSt.name, label: dn(selSt.name), sub: ju || '' };
+  }
+  return null;
+}
+const HIST_KIND = { train: '车次', line: '线路', station: '车站' };
+function trackHist() {
+  const now = histNow(), key = histKey(now);
+  if (key !== histKey(histCur)) {
+    if (histCur) {
+      HIST = [histCur, ...HIST.filter(h => histKey(h) !== histKey(histCur))].slice(0, 12);
+      try { localStorage.setItem('railmap.hist', JSON.stringify(HIST)); } catch (e) {}
+    }
+    histCur = now;
+  }
+  const list = HIST.filter(h => histKey(h) !== key);
+  const show = !now && list.length > 0;
+  const sig = show ? histKey(list[0]) + '|' + list.length : '';
+  if (sig === histShown) return;
+  histShown = sig;
+  $('hist').style.display = show ? 'block' : 'none';
+  if (!show) { $('hist').classList.remove('open'); return; }
+  const h0 = list[0];
+  $('histBtn').textContent = `↺ ${HIST_KIND[h0.k]} ${h0.label}`;
+  $('histBtn').title = `恢复选中：${h0.label}${h0.sub ? '（' + h0.sub + '）' : ''}`;
+  $('histList').innerHTML = HIST.map((h, i) => `<li data-i="${i}" title="${h.sub || ''}"><span class="k">${HIST_KIND[h.k]}</span>${h.label}${h.sub ? ` <span class="note">${h.sub}</span>` : ''}</li>`).join('')
+    + '<li class="clr" data-clr="1">清空历史</li>';
+}
+function restoreHist(h) {
+  if (!h) return;
+  $('hist').classList.remove('open');
+  if (h.k === 'train') {
+    const tr = findRun(h.v, h.od); if (!tr) { alert(`当前日期没有 ${h.label}`); return; }
+    sel = tr; selSt = null; lineBackTr = null; setLine(null);
+    const s0 = tr.s[0][2]; if (s0 != null && (T < s0 || T > tr.s[tr.s.length - 1][1])) setT(s0 + 1);
+    const st = state(tr, T); if (st && !map.getBounds().contains(st.pos)) map.setView(st.pos, Math.max(map.getZoom(), 8));
+  } else if (h.k === 'line') {
+    if (!KB || !KB.lines[h.v]) return;
+    sel = null; selSt = null; lineBackTr = null; setLine(h.v);
+    const hl = lineHighlight(h.v); if (hl) map.fitBounds([[hl.bbox[1], hl.bbox[0]], [hl.bbox[3], hl.bbox[2]]], { padding: [30, 30] });
+  } else if (h.k === 'station') {
+    const st = STBY[h.v]; if (!st) { alert(`当前日期没有车站 ${h.label}`); return; }
+    sel = null; selSt = st; setLine(null);
+    if (!map.getBounds().contains([st.lat, st.lon])) map.setView([st.lat, st.lon], Math.max(map.getZoom(), 10));
+  }
+  draw();
+}
+$('histBtn').onclick = () => restoreHist(HIST.find(h => histKey(h) !== histKey(histCur)));
+$('histDd').onclick = e => { e.stopPropagation(); $('hist').classList.toggle('open'); };
+$('histList').onclick = e => {
+  const li = e.target.closest('li'); if (!li) return;
+  if (li.dataset.clr) { HIST = []; histShown = null; try { localStorage.removeItem('railmap.hist'); } catch (err) {} trackHist(); return; }
+  restoreHist(HIST[+li.dataset.i]);
+};
+document.addEventListener('pointerdown', e => { if (!e.target.closest('#hist')) $('hist').classList.remove('open'); });
+L.DomEvent.disableClickPropagation($('hist')); L.DomEvent.disableScrollPropagation($('hist'));
+
+function drawFrame() {
+  const ctx = overlay.ctx, s = map.getSize(), z = map.getZoom();
+  ctx.clearRect(0, 0, s.x, s.y);
+  if (sel !== focusSel || (selLine ? null : selSt) !== focusSt) setFocus();
+  drawStations(ctx, s);
+  active = [];
+  const useMk = mkOn && typeof getMarker2D === 'function';
+  const inIcon = !useMk && z >= 12;    // 经典五边形模式下 z12 起把车次写进图标内
+  const r = useMk
+    ? (z >= 17 ? 42 : z >= 16 ? 36 : z >= 15 ? 30 : z >= 14 ? 24 : z >= 13 ? 19 : z >= 12 ? 15 : z >= 11 ? 11.8 : z >= 10 ? 9.2 : z >= 9 ? 7.2 : z >= 8 ? 5.6 : z >= 7 ? 4.4 : z >= 6 ? 3.4 : z >= 5 ? 2.8 : 2.4)
+    : (z >= 15 ? 14.5 : z >= 14 ? 13.5 : z >= 13 ? 12 : z >= 12 ? 10.5 : z >= 11 ? 7.6 : z >= 10 ? 6.4 : z >= 9 ? 5.4 : z >= 8 ? 4.4 : z >= 7 ? 3.6 : z >= 6 ? 2.8 : z >= 5 ? 2.5 : 2.3);
+  const edge = z >= 11 ? 1.2 : z >= 9 ? 1 : z >= 7 ? 0.7 : 0.5;   // 车身外描边宽度
+  const selc = css('--sel'), bg = css('--bg'), edgeC = css('--tEdge'), gold = css('--tGold'), grey = css('--muted');
+  const lc = Object.fromEntries(LIVERIES.map(k => [k, css('--t' + k)]));
+  const roundOk = z >= 6, fxOk = z >= 7;   // 太小时普速也画尖头、不画复兴号色带
+  const noTrains = z <= 3;             // 太远时不画车（选中的除外）
+  const pad = useMk ? 96 : inIcon ? 50 : 36;
+  const labels = [];
+  for (const tr of D.trains) {
+    if (noTrains && tr !== sel) continue;
+    const st = state(tr, T); if (!st) continue;
+    const p = toPx(st.pos);
+    if (p.x < -pad || p.y < -pad || p.x > s.x + pad || p.y > s.y + pad) continue;
+    active.push({ tr, st, p });
+  }
+  active.sort((x, y) => ((x.tr === sel || x.tr === hover) - (y.tr === sel || y.tr === hover)) || (focus ? focus.has(x.tr) - focus.has(y.tr) : 0));
+  for (const a of active) {
+    // 选中车次时别的车灰掉；选中车站时车照常着色（路网仍压暗），只是不停这个站的车不标车次
+    const isSel = a.tr === sel || a.tr === hover, off = focus && !focus.has(a.tr), dim = off && !!sel;
+    ctx.globalAlpha = dim ? 0.45 : 1;
+    if (useMk) {
+      const sh = drawTrainMarker(ctx, a.p, a.st.back, a.st.ahead, isSel ? r * 1.18 + 2 : r, a.tr, isSel, dim, z, selc, bg, grey);
+      a.hit = sh.hit;
+      if ((z >= 10 && !off) || isSel) labels.push({ a, lab: sh.label, isSel, pri: a.tr === sel ? 0 : focus && focus.has(a.tr) ? 1 : 2 });
+    } else {
+      const emu = EMU.has(a.tr.lv), txt = inIcon ? a.tr.c.split('/')[0] : null;
+      const sh = trainShape(ctx, a.p, a.st.back, a.st.ahead, isSel ? r + (inIcon ? 1.5 : 2.5) : r, !emu && roundOk, txt, a.tr.fx && fxOk && !dim);
+      a.hit = sh.hit;
+      const lab = sh.label;
+      // 外描边：与底下线路分开；动车组车身浅，用深色描边（深色主题即背景色）；选中为品红圈
+      ctx.lineJoin = 'round'; ctx.lineWidth = isSel ? 3 : edge; ctx.strokeStyle = isSel ? selc : emu && !dim ? edgeC : bg; ctx.stroke();
+      ctx.fillStyle = dim ? grey : lc[a.tr.lv]; ctx.fill();
+      if (a.tr.fx && fxOk && !dim) { sh.lower(); ctx.fillStyle = gold; ctx.fill(); }
+      if (txt) sh.drawText(!dim && (a.tr.lv === 'S' || a.tr.lv === 'W') ? '#1b1b1b' : '#ffffff');
+      else if ((z >= 10 && !off) || isSel) labels.push({ a, lab, isSel, pri: a.tr === sel ? 0 : focus && focus.has(a.tr) ? 1 : 2 });
+    }
+  }
+  ctx.globalAlpha = 1;
+  drawTrainLabels(ctx, labels);
+  $('clock').textContent = fmt(T);
+  $('count').textContent = noTrains ? '放大到 z4 显示列车' : `视野内 ${active.length} 趟`;
+  if (sel || selLine || !selSt) stPanelKey = null;    // 面板换成别的内容后，对应面板要整份重绘
+  if (!sel || selLine) trPanelId = '';
+  if (sel || !selLine) linePanelKey = null;
+  if (sel) panel(); else if (selLine) linePanel(); else if (selSt) stationPanel();
+}
+
+// 车站：圆点大小按当日停靠车次数分级；标注随缩放逐级显示
+const stRadius = n => n >= 300 ? 4.6 : n >= 100 ? 3.6 : n >= 30 ? 2.9 : 2.2;
+const stDotMin = z => z >= 7 ? 0 : z >= 6 ? 50 : z >= 5 ? 100 : 440;   // 低缩放只画大站
+const stLabelMin = z => z >= 10 ? 0 : z >= 9 ? 30 : z >= 8 ? 100 : z >= 6 ? 300 : 440;
+const stFont = (z, big) => {
+  const fs = big ? (z <= 4 ? 10 : z <= 9 ? 11 : z <= 11 ? 12 : z === 12 ? 13 : 14) : (z <= 4 ? 9 : z <= 11 ? 11 : z === 12 ? 12 : 13);
+  return [fs, `${big && z >= 6 ? '600 ' : ''}${fs}px system-ui`];
+};
+let stShown = [], stLabelBoxes = [];   // 车站标注占用的矩形，车次标签避让
+function drawStations(ctx, s) {
+  const z = map.getZoom(), minDot = stDotMin(z), minLabel = stLabelMin(z), bg = css('--bg'), fg = css('--fg'), mu = css('--muted');
+  const stFill = css('--stFill');
+  // 选中单个车次时：只画它自己的停站（含技术停车折返站），且都要标名（标注互相重叠时让大站优先）
+  const own = sel ? new Set([...sel.s.map(x => x[0]), ...sel.l.flatMap(l => (l && l[5]) ? l[5].filter(w => w[4] === '技术停车').map(w => w[3]) : [])])
+    : selLine && KB ? new Set(KB.lines[selLine].st.map(x => x[0])) : null;
+  stShown = []; stLabelBoxes = [];
+  const labs = [];
+  for (const st of ST) {
+    const cityMode = !own && z <= CITY_MAX_Z, nEff = cityMode ? st.cityN ?? st.n : st.n;
+    const cap = st.capital && z === CAPITAL_Z;
+    if (own ? !own.has(st.name) : nEff < minDot && st !== selSt && !cap) continue;
+    const isSel0 = st === selSt;
+    const wantLabel = own || isSel0 || cap || (cityMode ? !st.cityBase && nEff >= minLabel : st.n >= minLabel);
+    if (z <= 6 && !wantLabel) continue;       // z ≤ 6 只画有站名的车站
+    const p = map.latLngToContainerPoint([st.lat, st.lon]);
+    if (p.x < -20 || p.y < -20 || p.x > s.x + 20 || p.y > s.y + 20) continue;
+    const r = stRadius(st.n) * stZoomK(z), isSel = st === selSt;
+    const rr = isSel ? r + 2 : r;
+    // 尺寸：缩小时用固定像素；放大后按真实尺度换算、跟地图一起变大，设上限
+    const mpp = 156543.03 * Math.cos(st.lat * Math.PI / 180) / 2 ** z;   // 每像素米数
+    let ex, ey, rectN = null;                 // 画出图形的半宽、半高（屏幕轴向），站名与点击范围据此让开
+    const shape = stShape(st, z), big = isBigStation(st);
+    ctx.beginPath();
+    if (shape === 'rect') {                   // 沿线路走势的长方形（墨卡托保角，屏幕 y 向下）
+      const [L, W] = stRectSize(big, z, mpp, isSel);
+      const a = Math.atan2(-st.axis[1], st.axis[0]), c = Math.cos(a), si = Math.sin(a);
+      const pt = (u, v) => [p.x + c * u - si * v, p.y + si * u + c * v];
+      ctx.moveTo(...pt(-L, -W)); ctx.lineTo(...pt(L, -W)); ctx.lineTo(...pt(L, W)); ctx.lineTo(...pt(-L, W)); ctx.closePath();
+      ex = Math.abs(c) * L + Math.abs(si) * W; ey = Math.abs(si) * L + Math.abs(c) * W;
+      rectN = [-si, c, W];                    // 长边法线（屏幕坐标）及半宽，站名放在法线上
+    } else {                                  // 圆点：放大后按半径约 150 m，上限 28 px；与长方形并存的级别（z7–11）面积 ≥ 1.2 倍普通站长方形
+      const [L0, W0] = stRectSize(false, z, mpp, isSel);
+      const R = Math.max(Math.min(28, Math.max(rr, 150 / mpp)), z >= 7 ? Math.sqrt(1.2 * 4 * L0 * W0 / Math.PI) : 0);
+      ctx.arc(p.x, p.y, R, 0, 2 * Math.PI); ex = ey = R;
+    }
+    // 填充：长方形用 --stFill（实心），圆点用背景色
+    ctx.fillStyle = shape === 'rect' ? stFill : bg; ctx.fill();
+    // 轮廓线
+    ctx.lineJoin = 'miter'; ctx.lineWidth = isSel ? 2 : 1.2; ctx.strokeStyle = isSel ? css('--sel') : mu; ctx.stroke();
+    const ent = { st, p, hr: Math.max(9, Math.min(ex, ey) + 2) };
+    if (wantLabel) {
+      // 候选中心点：长方形放在长边法线上（先上方/右侧，被占再换对侧），框边离长方形 3 px；圆点放右上角外侧
+      const [fs, font] = stFont(z, big || cap || (cityMode && nEff >= ST_BIG_N));
+      ctx.font = font;
+      const hw = ctx.measureText(dn(st.name)).width / 2 + 1, hh = fs / 2 + 1, cands = [];
+      if (rectN) {
+        let [nx, ny, W] = rectN;
+        if (Math.abs(ny) > 0.2 ? ny > 0 : nx < 0) { nx = -nx; ny = -ny; }
+        for (const k of [1, -1]) { const d = W + 3 + Math.abs(nx) * hw + Math.abs(ny) * hh;
+          cands.push([p.x + k * nx * d, p.y + k * ny * d]); }
+      } else cands.push([p.x + ex + 3 + hw, p.y - ey - hh + 1]);
+      labs.push({ st, ent, hw, hh, font, cands });
+    }
+    stShown.push(ent);
+  }
+  if (own) labs.sort((a, b) => b.st.n - a.st.n);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const hitB = b => stLabelBoxes.some(q => b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1]);
+  for (const l of labs) {
+    const boxes = l.cands.map(([x, y]) => [x - l.hw, y - l.hh, x + l.hw, y + l.hh]);
+    let k = boxes.findIndex(b => !hitB(b));
+    if (k < 0) { if (own) continue; k = 0; }          // 选中车次/线路时标注重叠就不画；平时照画
+    const b = boxes[k], [x, y] = l.cands[k];
+    stLabelBoxes.push(b); l.ent.box = b;
+    ctx.font = l.font;
+    ctx.lineWidth = 3; ctx.strokeStyle = bg; ctx.strokeText(dn(l.st.name), x, y);
+    ctx.fillStyle = fg; ctx.fillText(dn(l.st.name), x, y);
+  }
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  drawAuxStations(ctx, s);
+}
+
+// 非客运站（会让站 / 线路所）：垂直于线路的短刻度线，最后画、站名优先级最低（docs/11 §5.1）
+let auxShown = [];
+const AUX_NAME = ['会让站（不办客运）', '线路所'];
+function auxVisible(z) {
+  // 选中车次：只显示该车在此有推定停车（会车、待避、技术停车）的非客运站；选中客里表线路：只显示该线所含的
+  if (sel) {
+    const nm = new Set(sel.l.flatMap(l => (l && l[5]) ? l[5].map(w => w[3]) : []));
+    return z >= 8 ? a => nm.has(a.name) : () => false;
+  }
+  if (selLine) return z >= 8 ? a => a.lines.includes(String(selLine)) : () => false;
+  return z >= 10 ? () => true : () => false;
+}
+function drawAuxStations(ctx, s) {
+  auxShown = [];
+  const z = map.getZoom(), show = auxVisible(z);
+  if (!AUX.length) return;
+  const mu = css('--muted'), bg = css('--bg'), own = !!(sel || selLine);
+  const labs = [];
+  ctx.lineCap = 'butt'; ctx.lineWidth = 1.6; ctx.strokeStyle = mu;
+  for (const a of AUX) {
+    if (!show(a) || STBY && STBY[a.name]) continue;       // 与客运站重名的不重复画
+    const p = map.latLngToContainerPoint([a.lat, a.lon]);
+    if (p.x < -20 || p.y < -20 || p.x > s.x + 20 || p.y > s.y + 20) continue;
+    const base = a.kind ? 5 : 7, cap = a.kind ? 8 : 11, len = Math.min(cap, base + Math.max(0, Math.min(z, 15) - 11));
+    const nx = a.ay, ny = a.ax, h = len / 2;       // 屏幕法线（线路走向 (ax, -ay) 的垂线），y 向下
+    ctx.beginPath(); ctx.moveTo(p.x - nx * h, p.y - ny * h); ctx.lineTo(p.x + nx * h, p.y + ny * h); ctx.stroke();
+    auxShown.push({ a, p, hr: Math.max(7, h + 3) });
+    if (z >= 12 || own) labs.push({ a, p, nx, ny, h });
+  }
+  ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = mu;
+  const hit = b => stLabelBoxes.some(q => b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1]);
+  for (const l of labs) {
+    const hw = ctx.measureText(dn(l.a.name)).width / 2 + 1, hh = 6;
+    let { nx, ny } = l; if (ny > 0 || (Math.abs(ny) < 0.2 && nx < 0)) { nx = -nx; ny = -ny; }
+    const d = l.h + 3 + Math.abs(nx) * hw + Math.abs(ny) * hh;
+    for (const k of [1, -1]) {
+      const x = l.p.x + k * nx * d, y = l.p.y + k * ny * d, b = [x - hw, y - hh, x + hw, y + hh];
+      if (hit(b)) continue;
+      stLabelBoxes.push(b); auxShown.find(q => q.a === l.a).box = b;
+      ctx.lineWidth = 3; ctx.strokeStyle = bg; ctx.strokeText(dn(l.a.name), x, y); ctx.fillText(dn(l.a.name), x, y);
+      break;
+    }
+  }
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+}
+function pickAux(e) {
+  const p = map.mouseEventToContainerPoint(e.originalEvent); let best = null, bd = Infinity;
+  for (const x of auxShown) {
+    const d = Math.hypot(x.p.x - p.x, x.p.y - p.y), b = x.box;
+    if (b && p.x >= b[0] && p.x <= b[2] && p.y >= b[1] && p.y <= b[3]) return x;
+    if (d < x.hr && d < bd) { bd = d; best = x; }
+  }
+  return best;
+}
+function showAuxTip(x) {
+  const t = $('auxtip');
+  if (!x) { t.style.display = 'none'; return; }
+  const ln = x.a.lines.map(id => KB && KB.lines[id] ? KB.lines[id].n : '').filter(Boolean).join('、');
+  const swTxt = x.a.sw === 1 ? 'OSM 有站线道岔' : x.a.sw === 0 ? 'OSM 未见站线道岔（可能未画，待核）' : '';
+  t.innerHTML = `<b>${dn(x.a.name)}</b>　${AUX_NAME[x.a.kind]}${ln ? `<br><span class="note">${ln}</span>` : ''}${swTxt ? `<br><span class="note">${swTxt}</span>` : ''}`;
+  t.style.display = 'block'; t.style.left = Math.round(x.p.x + 10) + 'px'; t.style.top = Math.round(x.p.y + 10) + 'px';
+}
+
+// 同一车次可能有多列在途（D、D−1、D−2 日始发的不同车底）：优先当前时刻在跑的，
+// 其次最近要发车的，再次当日始发的
+// 一列车的身份是（车次，始发日期）：tr.od 为前一两天始发的日期，当日始发的没有 od
+const dataDate = () => D.date || curDate;     // 用数据自带日期：切日期时 curDate 先变，旧数据的 od 仍要按旧日期算
+const runOd = tr => tr.od || dataDate();
+const runsOf = code => D.trains.filter(t => t.c.split('/').includes(code));
+// 该列车时刻相对其始发日的平移（分钟）：时刻表按始发日显示，次日写 ⁺1
+const runShift = tr => tr.od ? Math.round((Date.parse(dataDate()) - Date.parse(tr.od)) / 864e5) * 1440 : 0;
+const runT0 = tr => tr.s[0][2] ?? tr.s[0][1], runT1 = tr => { const z = tr.s[tr.s.length - 1]; return z[1] ?? z[2]; };
+const runStatus = tr => T < runT0(tr) - TERMINAL_DWELL ? '未发车' : T > runT1(tr) + TERMINAL_DWELL ? '已到达' : '运行中';
+function findRun(code, od) {
+  const runs = runsOf(code);
+  if (od) { const r = runs.find(tr => runOd(tr) === od); if (r) return r; }
+  const t0 = tr => tr.s[0][2] ?? tr.s[0][1], t1 = tr => { const z = tr.s[tr.s.length - 1]; return z[1] ?? z[2]; };
+  return runs.find(tr => t0(tr) <= T && T <= t1(tr) + TERMINAL_DWELL)
+    || runs.filter(tr => t0(tr) > T).sort((a, b) => t0(a) - t0(b))[0]
+    || runs.find(tr => !tr.od) || runs[0] || null;
+}
+
+// 车站面板：当天（0:00–24:00）全部到发，含前一两天始发、当天在此到发的车。
+// 行多（大站上千行），按“车站 + 日期 + 整分钟”缓存，同一分钟内不重绘；保留滚动位置，新打开时滚到当前时刻
+let stPanelKey = null;
+const evDep = e => e.end ? e.a ?? e.d : e.d ?? e.a;
+function stationPanel() {
+  const st = selSt, key = st.name + '|' + dataDate() + '|' + Math.floor(T) + '|' + (kbSubOpen ? 1 : 0);
+  if (key === stPanelKey) return;
+  const fresh = !stPanelKey || stPanelKey.split('|')[0] !== st.name || stPanelKey.split('|')[1] !== dataDate();
+  stPanelKey = key;
+  const rows = st.ev.filter(e => (e.d ?? e.a) >= 0 && (e.a ?? e.d) < 1440)
+    .sort((x, y) => evDep(x) - evDep(y) || x.tr.c.localeCompare(y.tr.c));   // 按发车时刻；终到的车按到达时刻排在其中
+  const pn = $('panel'), tw0 = pn.querySelector('.tw'), top = tw0 ? tw0.scrollTop : 0;
+  pn.style.display = 'flex';
+  const kl = KBST[st.name] || [];
+  const code = st.code || (kl.find(r => r.code) || {}).code || '';
+  const ju = (kl.find(r => r.ju) || {}).ju || '';
+  const lim = [...new Set(kl.flatMap(r => [...(r.lim || '')]))].join('');
+  const tags = [];
+  if (code) tags.push(`<span class="tag" title="车站电报略号 ${code}">${code}</span>`);
+  if (ju) tags.push(`<span class="tag" title="所属铁路局集团公司">${ju}</span>`);
+  if (st.ele != null) tags.push(`<span class="tag" title="车站海拔">${st.ele} m</span>`);
+  if (lim) tags.push(`<span class="tag kb-lim" title="客里表营业办理限制">${[...lim].map(c => `<span title="${KB_LIM[c] || c}">${c}</span>`).join('')}</span>`);
+  const kbSum = !kbSubOpen && kl.length ? `<span class="kb-sum">· ${kl.map(r => KB.lines[r.lid].n).join('、')}</span>` : '';
+  const linesHtml = kl.length ? `<button type="button" class="kb-bar${kbSubOpen ? ' open' : ''}" data-kb-toggle="1" title="${kbSubOpen ? '收起客里表所属线路' : '展开客里表所属线路'}"><span class="kb-l">${CHEV_R_SVG}<span>客里表线路</span>${kbSum}</span><span class="kb-cnt">${kl.length} 条</span></button>${kbSubOpen ? `<table class="kb-sub"><thead><tr><th>客里表线路</th><th class="num" title="距该线起始站里程 (km)">自首站</th><th class="num" title="距该线终点站里程 (km)">自末站</th></tr></thead><tbody>
+    ${kl.map(r => `<tr><td><a data-line="${r.lid}"${r.flag & 1 ? ' class="jsz" title="该站为此线接算站"' : ''}>${KB.lines[r.lid].n}${r.zx ? `（支${r.zx}）` : ''}</a>${r.flag & 2 ? '<span class="kb-Post" title="线路所">*</span>' : ''}</td><td class="num">${r.d0 ?? (r.km != null ? Math.round(r.km * 10) / 10 : '')}</td><td class="num">${r.d1 ?? ''}</td></tr>`).join('')}</tbody></table>` : ''}` : '';
+  pn.innerHTML = `<span class="x" id="close">✕</span><h3>${dn(st.name)}${tags.join('')}</h3>
+    ${linesHtml}
+    <div class="note" style="margin-top:2px">当天到发 ${rows.length} 趟</div>
+    <div class="tw"><table><thead><tr><th>车次</th><th class="num">到</th><th class="num">发</th><th>始发 → 终到</th></tr></thead><tbody>
+    ${rows.map((e, idx) => { const S = e.tr.s, past = (e.d ?? e.a) < T, cur = (e.a ?? e.d) <= T && T <= (e.d ?? e.a);
+      return `<tr class="${cur ? 'cur' : past ? 'past' : ''}" data-i="${idx}"><td><a href="#">${e.tr.c.split('/')[0]}</a>${e.tr.od ? `<span class="tag" title="${e.tr.od} 始发">${e.tr.od.slice(5)}</span>` : ''}${e.wait ? `<span class="tag" title="非办客技术停车换端折返">${e.wait}</span>` : ''}</td>
+        <td class="num">${e.a != null && !e.beg ? tm(e.a, fmtH) : '<span class="note">始发</span>'}</td><td class="num">${e.d != null && !e.end ? tm(e.d, fmtH) : '<span class="note">终到</span>'}</td>
+        <td class="main" title="${S[0][0]} → ${S[S.length - 1][0]}">${S[0][0]} → ${S[S.length - 1][0]}</td></tr>`; }).join('')}</tbody></table></div>
+    ${rows.length ? '' : '<div class="note" style="margin-top:6px">当天没有到发列车</div>'}
+    <div class="foot"><span>含前两日始发、当日途经的车</span><span class="more" title="点击车次可在地图上高亮追踪该列车；点击时刻可跳转到该时刻；点击客里表线路可查看整条线路车站与里程表（红下划线表示该站为该线接算站）。">详情...</span></div>`;
+  // 当前时刻所在行（第一趟还没开走的车）：新打开时滚到表格中央；之后时刻变化时保持原滚动位置，
+  // 这一行跑出可见范围（表头以下）才重新滚到中央，手动滚动看别的时段不会被一直拽回来，除非时刻在走
+  const tw = pn.querySelector('.tw'), r = tw.querySelector('tr[data-i]:not(.past)');
+  tw.scrollTop = fresh ? 0 : top;
+  if (r) {
+    const hh = tw.querySelector('thead').offsetHeight, wr = tw.getBoundingClientRect(), rr = r.getBoundingClientRect();
+    if (fresh || rr.top < wr.top + hh || rr.bottom > wr.bottom)
+      tw.scrollTop += rr.top - wr.top - hh - (tw.clientHeight - hh - rr.height) / 2;
+  }
+  $('close').onclick = () => { selSt = null; $('panel').style.display = 'none'; draw(); };
+  for (const tr of $('panel').querySelectorAll('tr[data-i]')) tr.onclick = ev => { ev.preventDefault();
+    if (ev.target.closest('[data-t]')) return;              // 点的是时刻：只跳时间（pointerdown 里已处理）
+    sel = rows[+tr.dataset.i].tr; selSt = null; draw(); };   // 直接取该行那一列（不按车次号查，避免选到另一天始发的同车次）
+}
+
+// 当前所在线路（map.py 输出的 glines：每条几何的 [起点里程比例, 线路名下标, 主要限速]；共线段按当前区间两端车站归属修正）
+function lineAt(tr, st) {
+  const leg = st && tr.l[st.li], segs = leg && D.glines && D.glines[leg[0]];
+  if (!segs || !segs.length) return null;
+  const f = leg[3] > 0 ? st.km / leg[3] : 0;
+  let g = segs[0];
+  for (const x of segs) if (x[0] <= f + 1e-6) g = x; else break;
+  let name = g[1] >= 0 ? D.line_names[g[1]] : null, lid = null;
+  const gm = D.gmember && D.gmember[leg[0]];
+  if (KB && gm && gm.length && D.member_sets) {
+    let m = gm[0];
+    for (const x of gm) if (x[0] <= f + 1e-6) m = x; else break;
+    const mids = m && m[1] >= 0 ? D.member_sets[m[1]] : null;
+    if (mids && mids.length) {
+      const li = st.li ?? st.i, a = tr.s[li] && tr.s[li][0], b = tr.s[li + 1] && tr.s[li + 1][0];
+      const baseLid = name ? kbLineFor(name, tr, st) : null;
+      const baseSt = baseLid && KB.lines[baseLid] ? (KB.lines[baseLid]._stSet ||= new Set(KB.lines[baseLid].st.map(x => x[0]))) : null;
+      const baseHits = baseSt ? (baseSt.has(a) ? 1 : 0) + (baseSt.has(b) ? 1 : 0) : 0;
+      for (const id of mids) {
+        const ln = KB.lines[id]; if (!ln) continue;
+        const stSet = ln._stSet || (ln._stSet = new Set(ln.st.map(x => x[0])));
+        const hits = (stSet.has(a) ? 1 : 0) + (stSet.has(b) ? 1 : 0);
+        if (hits > baseHits && hits >= 2) { lid = String(id); name = ln.osm[0] || ln.n; break; }
+      }
+    }
+  }
+  return { name, kmh: g[2], lid };
+}
+
+function describe(tr, st) {
+  const S = tr.s, sh = runShift(tr), f = v => fmtH(v + sh);
+  const curEle = showTrEle ? (st.ele ?? (st.moving ? null : (STBY[S[st.i][0]] && STBY[S[st.i][0]].ele))) : null;
+  const eleStr = curEle != null ? ` · 海拔 ${curEle} m` : '';
+  if (!st.moving) return `停 <b>${S[st.i][0]}</b>${eleStr}，${f(S[st.i][2] ?? S[st.i][1])} 开`;
+  const w = ((tr.l[st.i] && tr.l[st.i][5]) || []).find(w => w[2] > w[1] + 0.05 && w[1] <= T && T <= w[2]);   // 途中停车推定
+  if (w) return `停 <b>${w[3]}</b>（${w[4] === '技术停车' ? w[4] : w[4] + '，推定'}）${eleStr}，${f(w[2])} 开`;
+  return `${S[st.i][0]} → ${S[st.i + 1][0]} · <b>${Math.round(st.kmh / 5) * 5} km/h</b>${eleStr} · ${f(S[st.i + 1][1])} 到`;
+}
+function trainSpan(tr) {
+  let km = 0;
+  for (const l of tr.l) if (l && l[3] > 0) km += l[3];
+  const dt = Math.round(runT1(tr) - runT0(tr)), h = Math.floor(dt / 60), m = dt % 60;
+  const dur = dt > 0 ? (h ? `${h}h${String(m).padStart(2, '0')}m` : `${m}m`) : '';
+  return [km > 0 ? `${Math.round(km)} km` : '', dur].filter(Boolean).join(' · ');
+}
+// 同车次各始发日的列车（当前数据里在途或当日始发的），按始发日排；多列并存时显示双行 Tab 切换栏
+let panelRuns = [];
+const odLabel = d => `${d.slice(5)} 周${'日一二三四五六'[new Date(d + 'T00:00:00Z').getUTCDay()]}`;
+function runsHtml(tr) {
+  panelRuns = runsOf(tr.c.split('/')[0]).sort((a, b) => runOd(a).localeCompare(runOd(b)));
+  if (panelRuns.length <= 1) return '';
+  return `<div class="runs">${panelRuns.map((r, i) =>
+    `<a class="tab${r === tr ? ' cur' : ''}" data-run="${i}" title="${runOd(r)} 始发车底${r.inf ? '（开行为推定）' : ''}"><span class="t-d">${odLabel(runOd(r))}</span><span class="t-s">${runStatus(r)}${r.inf ? '?' : ''}</span></a>`).join('')}</div>`;
+}
+
+let trPanelId = '', trPanelT = -1;
+function panel() {
+  const st = state(sel, T), S = sel.s;
+  const id = sel.c + '|' + runOd(sel) + '|' + dataDate();
+  const fresh = id !== trPanelId, tMoved = T !== trPanelT;
+  trPanelId = id; trPanelT = T;
+  const pn = $('panel'), tw0 = !fresh && pn.querySelector('.tw'), top = tw0 ? tw0.scrollTop : 0;
+  pn.style.display = 'flex';
+  const sh = runShift(sel), f = v => fmtH(v + sh);
+  const runsBar = runsHtml(sel), span = trainSpan(sel);
+  const inWait = st && st.moving && ((sel.l[st.i] && sel.l[st.i][5]) || []).some(w => w[2] > w[1] + 0.05 && w[1] <= T && T <= w[2]);
+  const ln = lineAt(sel, st), lid = ln && (ln.lid || (ln.name ? kbLineFor(ln.name, sel, st) : null));
+  const emu = emuTag(sel, true);
+  pn.innerHTML = `<span class="x" id="close">✕</span><h3><span class="kd" style="background:${kindColor(sel)}"></span>${sel.c}${panelRuns.length <= 1 && sel.od ? ` <span class="tag" title="${sel.od} 始发${sel.inf ? '（开行为推定）' : ''}">${sel.od.slice(5)} 始发</span>` : ''}</h3>
+    <div class="od-row"><span class="od">${S[0][0]} → ${S[S.length - 1][0]}${span ? `<span class="note">${span}</span>` : ''}</span><span style="display:inline-flex;gap:4px"><a class="cam${showTrEle ? ' on' : ''}" data-tr-ele="1" title="${showTrEle ? '隐藏停站海拔' : '显示停站海拔'}" style="width:auto;padding:0 5px;font-size:11px">海拔</a><a class="cam${follow ? ' on' : ''}" data-follow="1" title="${follow ? '正在跟随，再点一次或拖动地图可退出' : '视角跟随该列车'}">${CAM_SVG}</a></span></div>
+    ${emu ? `<div class="emu-row">${emu}</div>` : ''}
+    ${runsBar}
+    <div class="stat"><div>${st ? describe(sel, st) : '<span class="note">当前时刻不在运行</span>'}</div>${ln && ln.name ? `<div class="note">当前线路：${lid ? `<a data-line="${lid}" title="查看客里表：${KB.lines[lid].n}">${ln.name}${EXT_SVG}</a>` : ln.name}${ln.kmh ? ` <span class="tag" title="线路限速 ${ln.kmh} km/h">${ln.kmh}</span>` : ''}</div>` : ''}</div>
+    <div class="tw"><table><thead><tr><th>车站</th><th class="num">到</th><th class="num">发</th><th class="num">停</th></tr></thead><tbody>${S.map((x, i) => {
+      const beg = i === 0, end = i === S.length - 1;
+      const past = (x[2] ?? x[1]) < T, cur = st && !st.moving && st.i === i, next = st && st.moving && !inWait && st.i + 1 === i;
+      const dw = !beg && !end && x[1] != null && x[2] != null ? Math.round(x[2] - x[1]) : 0;
+      const dwTxt = beg ? '<span class="note">始发</span>' : end ? '<span class="note">终到</span>' : dw > 0 ? dw + "'" : '';
+      // 本站到下一站的区间走单线（map.py 每日数据 sgl["起站|止站"] = [单线 km, 说明, 来源]）
+      const sgi = !end && D.sgl && D.sgl[x[0] + '|' + S[i + 1][0]];
+      const sgTag = sgi ? `<span class="sg" title="${(sgi[1] + '（' + sgSrcTxt(sgi[2]) + '）').replace(/"/g, '&quot;')}">单</span>` : '';
+      const stObj = STBY[x[0]];
+      const eleTag = showTrEle && stObj && stObj.ele != null ? `<span class="note" style="margin-left:3px;font-size:10.5px" title="车站海拔 ${stObj.ele} m">${stObj.ele}m</span>` : '';
+      const row = `<tr class="${cur ? 'cur' : next ? 'next' : past ? 'past' : ''}"><td class="main">${stObj ? `<a data-pan="${x[0]}" title="地图移到${x[0]}${stObj.ele != null ? `（海拔 ${stObj.ele} m）` : ''}">${dn(x[0])}</a>` : dn(x[0])}${eleTag}${sgTag}</td><td class="num">${!beg && x[1] != null ? tm(x[1], f) : ''}</td><td class="num">${!end && x[2] != null ? tm(x[2], f) : ''}</td><td class="num">${dwTxt}</td></tr>`;
+      // 该站之后区间里的途中停车推定（timetable.waits）：区间记录第 6 项 [[s 比例, 进站, 出站, 站名, 原因, 推定依据], ...]
+      const ws = ((sel.l[i] && sel.l[i][5]) || []).filter(w => w[2] > w[1] + 0.05);
+      return row + ws.map(w => { const wc = w[1] <= T && T <= w[2], wp = w[2] < T, wdw = Math.max(1, Math.round(w[2] - w[1]));
+        const why = (w[5] || '推断：图定时分比正常运行多出的时间按途中停车处理').replace(/"/g, '&quot;');
+        const wstObj = STBY[w[3]];
+        const wEleTag = showTrEle && wstObj && wstObj.ele != null ? `<span class="note" style="margin-left:3px;font-size:10.5px" title="车站海拔 ${wstObj.ele} m">${wstObj.ele}m</span>` : '';
+        const wSt = wstObj ? `<a data-pan="${w[3]}" title="地图移到${w[3]}${wstObj.ele != null ? `（海拔 ${wstObj.ele} m）` : ''}">${dn(w[3])}</a>` : dn(w[3]);
+        return `<tr class="wait${wc ? ' cur' : wp ? ' past' : ''}" title="${why}"><td class="main">↳ ${wSt}${wEleTag} <span class="note">${w[4]}</span></td><td class="num">${tm(w[1], f)}</td><td class="num">${tm(w[2], f)}</td><td class="num">${wdw}'</td></tr>`; }).join(''); }).join('')}</tbody></table></div>
+    <div class="foot"><span>↳ 斜体为推定途中待避（悬停该行看依据） · <span class="sg" style="margin-left:0">单</span>该站之后的区间含单线</span><span class="more" title="站间位置按运动学推算（起停加减速、线路限速、运营速度）；图定时分比正常运行（按时刻表校准）多出的部分，推定为途中停车（斜体行：待避越行车）；路径与位置均为推断结果。">详情...</span></div>`;
+  const tw = pn.querySelector('.tw'), r = tw && tw.querySelector('tr.cur, tr.next');
+  if (tw) {
+    tw.scrollTop = fresh ? 0 : top;
+    if (r && (fresh || tMoved)) {
+      const hh = tw.querySelector('thead').offsetHeight, wr = tw.getBoundingClientRect(), rr = r.getBoundingClientRect();
+      if (fresh || rr.top < wr.top + hh || rr.bottom > wr.bottom)
+        tw.scrollTop += rr.top - wr.top - hh - (tw.clientHeight - hh - rr.height) / 2;
+    }
+  }
+  $('close').onclick = () => { sel = null; $('panel').style.display = 'none'; draw(); };
+}
+
+function pick(e) {
+  const p = map.mouseEventToContainerPoint(e.originalEvent); let best = null, bd = 10;
+  for (const a of active) { const d = Math.hypot(a.p.x - p.x, a.p.y - p.y); if (d < bd) { bd = d; best = a; } }
+  if (best) return best;
+  for (let i = active.length - 1; i >= 0; i--) if (active[i].hit && active[i].hit(p)) return active[i];
+  return null;
+}
+map.on('mousemove', e => {
+  const a = pick(e); const h = a && a.tr;
+  if (h !== hover) { hover = h; draw(); }
+  if (a) {
+    const tip = $('tip'); tip.style.display = 'block';
+    tip.style.left = (e.originalEvent.clientX + 12) + 'px'; tip.style.top = (e.originalEvent.clientY + 12) + 'px';
+    tip.innerHTML = `<span class="kd" style="background:${kindColor(a.tr)}"></span><b>${a.tr.c}</b><div class="note">${a.tr.s[0][0]} → ${a.tr.s[a.tr.s.length - 1][0]}</div>`;
+  } else {
+    const pst = pickStation(e);
+    if (pst) {
+      const tip = $('tip'); tip.style.display = 'block';
+      tip.style.left = (e.originalEvent.clientX + 12) + 'px'; tip.style.top = (e.originalEvent.clientY + 12) + 'px';
+      const kl = KBST[pst.name] || [];
+      const code = pst.code || (kl.find(r => r.code) || {}).code || '';
+      const ju = (kl.find(r => r.ju) || {}).ju || '';
+      const meta = [code && `-${code}`, ju].filter(Boolean).join(' · ');
+      tip.innerHTML = `<b>${dn(pst.name)}</b>${meta ? ` <span class="note">${meta}</span>` : ''} · <span class="note">停靠 ${pst.n} 趟</span>`;
+    } else {
+      $('tip').style.display = 'none';
+    }
+  }
+  map.getContainer().style.cursor = a || pickStation(e) ? 'pointer' : '';
+});
+// 车站几何属性（规范见 docs/11-地图车站标记.md）：
+//   st.axis      轴向单位向量（东, 北）：各通过列车 进站前 → 出站后 各 0.4 km 弦方向的倍角平均（≈ 站台方向）
+//   st.lat/lon   改为经过列车区间几何端点（在铁路上）的平均位置
+const AXIS_KM = 0.4;   // 轴向：通过列车 进站前 → 出站后 各 0.4 km 的弦（≈ 车站处线路切线）
+function stationAxes(byName) {
+  const bear = new Map(), side = new Map();   // 通过列车的弦方向 / 单侧（始发、终到）进出站方向
+  const add = (m, st, a, b) => {
+    const dx = (b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180), dy = b[0] - a[0];
+    if (dx || dy) { let v = m.get(st); if (!v) m.set(st, v = []); if (v.length < 60) v.push(Math.atan2(dy, dx)); }
+  };
+  // 车站显示位置：OSM 车站点多在站房上，改用经过列车区间几何端点（在铁路上）的平均位置
+  const ends = new Map();
+  const addEnd = (st, ll) => { let v = ends.get(st); if (!v) ends.set(st, v = [0, 0, 0]); v[0] += ll[0]; v[1] += ll[1]; v[2]++; };
+  for (const tr of D.trains) tr.s.forEach(([name], i) => {
+    const st = byName[name]; if (!st) return;
+    const arr = tr.l[i - 1], dep = tr.l[i];
+    if (arr && dep) {                          // 弯道上取远处的点会偏，只用紧贴车站的弦；端点未补齐的旧数据按缺口比例插值车站位置
+      const ga = G[arr[0]], kN = ga.km[ga.km.length - 1], gd = G[dep[0]], k0 = gd.km[0];
+      const pa = geomPos(ga, kN), pd = geomPos(gd, k0);
+      const din = Math.max(0, arr[3] - kN), dout = Math.max(0, k0), u = din + dout > 1e-4 ? din / (din + dout) : 0.5;
+      addEnd(st, [pa[0] + u * (pd[0] - pa[0]), pa[1] + u * (pd[1] - pa[1])]);
+      add(bear, st, geomPos(ga, Math.max(ga.km[0], kN - AXIS_KM)), geomPos(gd, Math.min(gd.km[gd.km.length - 1], k0 + AXIS_KM)));
+    } else if (arr) {
+      const g = G[arr[0]], kN = g.km[g.km.length - 1];
+      if (arr[3] - kN < 0.05) addEnd(st, geomPos(g, kN));
+      add(side, st, geomPos(g, Math.max(g.km[0], kN - AXIS_KM)), geomPos(g, kN));
+    } else if (dep) {
+      const g = G[dep[0]], k0 = g.km[0];
+      if (k0 < 0.05) addEnd(st, geomPos(g, k0));
+      add(side, st, geomPos(g, k0), geomPos(g, Math.min(g.km[g.km.length - 1], k0 + AXIS_KM)));
+    }
+  });
+  for (const tr of D.trains) for (const leg of tr.l) if (leg && leg[5]) for (const w of leg[5]) if (w[4] === '技术停车') {
+    const st = byName[w[3]]; if (!st) continue;
+    const g = G[leg[0]], sw = w[0] * leg[3];
+    addEnd(st, geomPos(g, sw));
+    add(side, st, geomPos(g, Math.max(g.km[0], sw - AXIS_KM)), geomPos(g, sw));
+  }
+  for (const [st, v] of ends) {
+    const lat = v[0] / v[2], lon = v[1] / v[2];
+    // 端点离原位置太远（>3 km，多为同名站匹配错）时不挪
+    if (Math.hypot((lon - st.lon) * Math.cos(lat * Math.PI / 180), lat - st.lat) < 0.027) { st.lat = lat; st.lon = lon; }
+  }
+  // 兜底旧数据：几何首尾折点若缺了车站切分端点（k0 > 0 或 kN < leg.km），用车站坐标补齐首尾
+  const doneG = new Uint8Array(G.length);
+  for (const tr of D.trains) tr.l.forEach((leg, i) => {
+    if (!leg || doneG[leg[0]]) return;
+    doneG[leg[0]] = 1;
+    const g = G[leg[0]], n = g.km.length, k0 = g.km[0], kN = g.km[n - 1], L = leg[3];
+    const s0 = k0 > 0.005 && byName[tr.s[i][0]], s1 = L - kN > 0.005 && byName[tr.s[i + 1][0]];
+    const ok0 = s0 && Math.hypot((g.lon[0] - s0.lon) * 85, (g.lat[0] - s0.lat) * 111) <= k0 + 0.35;
+    const ok1 = s1 && Math.hypot((g.lon[n - 1] - s1.lon) * 85, (g.lat[n - 1] - s1.lat) * 111) <= (L - kN) + 0.35;
+    if (!ok0 && !ok1) return;
+    const m = n + (ok0 ? 1 : 0) + (ok1 ? 1 : 0), o = ok0 ? 1 : 0;
+    const km = new Float64Array(m), lon = new Float64Array(m), lat = new Float64Array(m);
+    km.set(g.km, o); lon.set(g.lon, o); lat.set(g.lat, o);
+    if (ok0) { km[0] = 0; lon[0] = s0.lon; lat[0] = s0.lat; }
+    if (ok1) { km[m - 1] = L; lon[m - 1] = s1.lon; lat[m - 1] = s1.lat; }
+    g.km = km; g.lon = lon; g.lat = lat;
+    if (g.ele) {
+      const ele = new Int16Array(m);
+      ele.set(g.ele, o);
+      if (ok0) ele[0] = s0.ele ?? g.ele[0];
+      if (ok1) ele[m - 1] = s1.ele ?? g.ele[n - 1];
+      g.ele = ele;
+    }
+  });
+  // 轴向：方向的“倍角平均”（上下行方向相反也算同一轴）。优先用通过列车的弦；没有通过列车的站（只有始发终到）
+  // 用单侧进出站方向；都没有的站横放。每个站都有轴向，z ≥ 7 一律画长方形
+  for (const st of ST) {
+    const v = bear.get(st) || side.get(st);
+    let cx = 1, cy = 0;
+    if (v) { cx = cy = 0; for (const b of v) { cx += Math.cos(2 * b); cy += Math.sin(2 * b); } }
+    const phi = cx || cy ? Math.atan2(cy, cx) / 2 : 0;
+    st.axis = [Math.cos(phi), Math.sin(phi)];
+  }
+}
+// 同城多站：站名去掉后缀正好是另一个站名（≥2 字）、且相距 < 60 km 的，归到那个不带后缀的站（北京丰台、北京南 → 北京）。
+// z ≤ CITY_MAX_Z 时只标不带后缀的站名，其标注门槛按全城最大站的停靠车次（cityN）算
+const CITY_MAX_Z = 9;
+function cityBases() {
+  for (const st of ST) {
+    for (let k = st.name.length - 1; k >= 2; k--) {
+      const b = STBY[st.name.slice(0, k)];
+      if (!b || b === st) continue;
+      if (Math.hypot((b.lon - st.lon) * Math.cos(st.lat * Math.PI / 180), b.lat - st.lat) > 0.54) continue;
+      st.cityBase = b; b.cityN = Math.max(b.cityN ?? b.n, st.n); break;
+    }
+  }
+  // 省会、直辖市、特别行政区：有同名站用同名站，没有就用以城市名开头、车次最多的站（成都东、重庆北、香港西九龙）
+  for (const c of CAPITALS) {
+    let b = STBY[c];
+    if (!b) for (const st of ST) if (st.name.startsWith(c) && (!b || st.n > b.n)) b = st;
+    if (b) b.capital = true;
+  }
+}
+const CAPITALS = ('北京 天津 上海 重庆 石家庄 太原 呼和浩特 沈阳 长春 哈尔滨 南京 杭州 合肥 福州 南昌 济南 郑州 武汉 长沙 ' +
+  '广州 南宁 海口 成都 贵阳 昆明 拉萨 西安 兰州 西宁 银川 乌鲁木齐 香港 澳门 台北').split(' ');
+const CAPITAL_Z = 6;                  // 此级省会一律标名（不论车次）
+
+// 车站标记形状与尺寸（规范见 docs/11-地图车站标记.md）
+const stZoomK = z => z >= 12 ? 2.3 : z === 11 ? 1.88 : z === 10 ? 1.48 : z === 9 ? 1.22 : z === 8 ? 1 : z === 7 ? 0.85 : z === 6 ? 1 : 0.88;
+const ST_BIG_N = 100;                 // 当日停靠 ≥ 此数为大站
+const ST_RECT_ALL_Z = 7;              // 此级起所有车站（有轴向的）都画长方形
+const isBigStation = st => st.n >= ST_BIG_N;   // 只看停靠车次；接算站很多很小，不单独当大站
+function stShape(st, z) {
+  if (z <= 6 || !st.axis) return 'circle';
+  if (z >= ST_RECT_ALL_Z) return 'rect';
+  return isBigStation(st) ? 'circle' : 'rect';
+}
+// 长方形半长 L、半宽 W（像素）：缩小时按等级与缩放系数固定像素，放大后按真实站场尺寸换算，保持长宽比下限
+function stRectSize(big, z, mpp, sel) {
+  const rb = 2.2 * stZoomK(z) * (big ? 1.25 : 0.95) + (sel ? 2 : 0);
+  const [lenM, widM, capL, capW] = big ? [450, 110, 56, 22] : [320, 65, 44, 16];
+  const L = Math.min(capL, Math.max(rb * 1.75, lenM / mpp));
+  let W = Math.min(capW, Math.max(rb * 0.82, widM / mpp));
+  W = Math.min(capW, Math.max(W, L * (z >= 12 ? 0.34 : 0.28)));
+  return [L, W];
+}
+
+function pickStation(e) {
+  const p = map.mouseEventToContainerPoint(e.originalEvent); let best = null, bd = Infinity;
+  for (const x of stShown) { const d = Math.hypot(x.p.x - p.x, x.p.y - p.y); if (d < x.hr && d < bd) { bd = d; best = x.st; } }
+  if (best) return best;
+  for (const x of stShown) { const b = x.box; if (b && p.x >= b[0] && p.x <= b[2] && p.y >= b[1] && p.y <= b[3]) return x.st; }   // 站名也能点
+  return null;
+}
+map.on('dragstart', () => { if (follow) { follow = false; draw(); } });
+map.on('movestart zoomstart', () => showAuxTip(null));
+map.on('click', e => {
+  const a = pick(e);
+  showAuxTip(!a && !pickStation(e) ? pickAux(e) : null);
+  sel = a ? a.tr : null;
+  selSt = sel ? null : pickStation(e);
+  setLine(null);
+  if (!sel && !selSt) $('panel').style.display = 'none';
+  draw();
+});
+
+$('baseop').value = baseOpacity;
+$('baseop').oninput = e => { setBaseOpacity(+e.target.value);
+  try { localStorage.setItem('railmap.baseOpacity2', e.target.value); } catch (err) {} };
+$('baseop').onchange = e => e.target.blur();
+
+// 按钮、链接点击后不留焦点，免得焦点框留在按钮上、按空格又触发按钮而不是播放/暂停
+document.addEventListener('click', e => {
+  const el = e.target.closest('button, a');
+  if (el) el.blur();
+});
+
+// 播放/暂停与速度合成一组按钮：❚❚ + 三档速度。点速度按该速度播放；再点正在用的速度或点 ❚❚ 暂停。
+// 暂停时 ❚❚ 高亮，上次用的速度描边，空格键按它继续播放
+let speed = 300;
+function setPlay(on, v) {
+  if (v) speed = v;
+  if (on && !playing && sel && T >= +$('slider').max) jumpT(+$('slider').min);   // 选中列车已播完：从始发重播
+  playing = on; last = performance.now();
+  for (const b of $('speed').children) {
+    const bv = +b.dataset.v;
+    b.classList.toggle('on', playing ? bv === speed : bv === 0);
+    b.classList.toggle('pre', !playing && bv === speed);
+  }
+  if (!on) writeHash(true);
+}
+$('speed').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  b.blur();                                   // 不留焦点，空格、方向键快捷键照常用
+  const v = +b.dataset.v;
+  if (!v || (playing && v === speed)) setPlay(false); else setPlay(true, v);
+};
+
+function setT(t) { T = t; $('slider').value = t; draw(); saveView(); }
+// 选中列车时，滑块只覆盖这趟车：始发前到终到后各留 TERMINAL_DWELL 分钟。
+// 跨日：区间按当前数据日的分钟数算，前一天始发的为负，次日到达的超过 1440。拖到当天以外时经 jumpT 切到相邻日期，
+// 按（车次，始发日期）接上同一列车；新一天的区间整体平移 1440，滑块的相对位置不变，拖动是连续的。
+// 新选中一趟车时，当前时刻不在它的区间里就跳到区间内最近的一端
+let sliderKey = '';
+function syncSlider() {
+  const id = sel ? sel.c + '|' + runOd(sel) : '', key = sel ? id + '|' + dataDate() : '';
+  if (key === sliderKey) return;
+  const fresh = id !== sliderKey.split('|').slice(0, 2).join('|');
+  sliderKey = key;
+  const lo = sel ? runT0(sel) - TERMINAL_DWELL : 0, hi = sel ? runT1(sel) + TERMINAL_DWELL : 1440, s = $('slider');
+  s.min = lo; s.max = hi; s.value = T; s.classList.toggle('run', !!sel);
+  s.title = sel ? `时间轴限定在 ${sel.c} 始发前到终到后` : '';
+  if (sel && fresh && !contRoll && !switching && (T < lo || T > hi)) jumpT(Math.min(hi, Math.max(lo, T)));
+}
+// 时刻表里的时刻可点：跳到该时刻。时刻是当前数据日的分钟数，超出 0–24:00（前一天始发车的头几站、跨夜车的后几站）
+// 就切到对应日期，选中的列车按（车次，始发日期）接续
+const tm = (v, f) => `<span class="tm" data-t="${v}" title="跳到这个时刻">${f(v)}</span>`;
+function jumpT(v) {
+  const k = Math.floor(v / 1440);
+  if (k === 0 || v === 1440 || !curDate) { setT(Math.min(1440, Math.max(0, v))); return; }
+  const t = new Date(curDate + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + k);
+  const day = t.toISOString().slice(0, 10), e = dateEntry(day);
+  if (!e || !e.selectable || !e.file) { setT(k < 0 ? 0 : 1440); return; }   // 那天没有数据：停在当天边界
+  contRoll = true;
+  loadDate(day).then(ok => { contRoll = false; setT(ok ? v - 1440 * k : (k < 0 ? 0 : 1440)); });
+}
+$('slider').oninput = e => { const v = +e.target.value;
+  if (v >= 0 && v <= 1440) setT(v); else if (!switching) jumpT(v); };
+$('slider').onchange = e => e.target.blur();
+// 键盘：空格播放/暂停；← → 快退/快进，幅度为当前倍速下 5 秒播放的时长（300× 即 25 分钟），按住可连续跳。
+// 仅在文本输入框、下拉框聚焦时不拦截；按钮或滑块纵使残留焦点也照常响应快捷键
+function handleKey(code, repeat) {
+  if (code === 'Space') { if (!repeat) setPlay(!playing); return true; }
+  if (code === 'ArrowLeft' || code === 'ArrowRight') {
+    const step = 5 * speed / 60, lo = +$('slider').min, hi = +$('slider').max;
+    if (!switching) jumpT(Math.min(hi, Math.max(lo, T + (code === 'ArrowRight' ? step : -step))));
+    return true;
+  }
+  return false;
+}
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target.closest('input:not([type=range]), select, textarea, [contenteditable]')) return;
+  if (handleKey(e.code, e.repeat)) {
+    e.preventDefault(); e.stopPropagation();              // 捕获阶段拦下，不触发聚焦按钮，也不让 Leaflet 用方向键平移地图
+  }
+}, true);
+addEventListener('message', e => {
+  if (e.origin === location.origin && e.data && e.data.type === 'railmap-key') handleKey(e.data.code, e.data.repeat);
+});
+let last = performance.now();
+setPlay(false);
+function tick(now) {
+  if (playing && !switching) {
+    T += (now - last) / 60000 * speed;
+    const hi = +$('slider').max;
+    if (sel && T >= hi) { setT(hi); setPlay(false); }   // 选中列车：播到终到后停下
+    else if (T >= 1440) {                 // 过 24:00：下一天可选就切过去接着播，否则回到当天 0:00
+      const nx = curDate && nextDay(curDate), e = nx && dateEntry(nx);
+      if (e && e.selectable) { const over = T - 1440; T = 1440; setT(T); contRoll = true;
+        loadDate(nx).then(ok => { contRoll = false; setT(ok ? Math.min(over, 1440) : 0); }); }
+      else setT(0);
+    } else setT(T);
+  }
+  last = now; requestAnimationFrame(tick);
+}
+$('q').onchange = e => {
+  const raw = e.target.value.trim(); if (!raw) return;
+  const q = raw.toUpperCase();
+  const tr = findRun(q);
+  if (tr) {
+    e.target.blur();
+    sel = tr; selSt = null; setLine(null); const pts = [];
+    for (const leg of tr.l) if (leg) { const g = G[leg[0]]; for (let j = 0; j < g.km.length; j += 5) pts.push([g.lat[j], g.lon[j]]); }
+    if (pts.length) map.fitBounds(pts, { padding: [40, 40] });
+    const st0 = tr.s[0][2]; if (st0 != null && (T < st0 || T > tr.s[tr.s.length - 1][1])) setT(st0 + 1); else draw();
+    writeHash(true);
+    return;
+  }
+  const st = findStation(raw);
+  if (st) {
+    e.target.blur();
+    sel = null; selSt = st; setLine(null);
+    map.setView([st.lat, st.lon], Math.max(map.getZoom(), 11));
+    draw();
+    writeHash(true);
+    return;
+  }
+  e.target.value = ''; e.target.placeholder = '未找到';
+};
+
+// ===== 日期：map_dates.json 清单 + 每天一个 map_data_<日期>.json =====
+// 清单取不到时回退到单文件 map_data.json（不显示日期选择）
+let DATES = null, curDate = null, switching = false, loadSeq = 0, firstInit = true;
+const dateEntry = d => DATES && DATES.dates.find(x => x.date === d);
+const selectable = () => DATES ? DATES.dates.filter(x => x.selectable && x.file) : [];
+const nextDay = d => { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + 1); return t.toISOString().slice(0, 10); };
+const WD = '日一二三四五六';
+const dateLabel = d => `${d.slice(5)} 周${WD[new Date(d + 'T00:00:00Z').getUTCDay()]}`;
+
+function renderDateBox() {
+  if (!DATES) { $('datebox').style.display = 'none'; return; }
+  $('datebox').style.display = '';
+  const sel_ = $('date');
+  sel_.innerHTML = DATES.dates.map(x => {
+    const ok = x.selectable && x.file;
+    const txt = `${dateLabel(x.date)}${ok ? (x.trains != null ? ` · ${x.trains} 趟` : '') : `（${x.reason || '无数据'}）`}`;
+    return `<option value="${x.date}"${ok ? '' : ' disabled'} title="${ok ? '' : (x.reason || '无数据')}">${txt}</option>`;
+  }).join('');
+  sel_.value = curDate || '';
+  const ss = selectable(), i = ss.findIndex(x => x.date === curDate);
+  $('dprev').disabled = i <= 0; $('dnext').disabled = i < 0 || i >= ss.length - 1;
+  renderDateInfo();
+}
+function renderDateInfo() {
+  const e = (curDate && dateEntry(curDate)) || {}, bits = [];
+  const n = e.trains ?? (D && D.trains ? D.trains.filter(t => !t.od).length : null);
+  if (n != null) bits.push(`${n} 趟`);
+  const partial = (e.list_status || (D && D.list_status)) === 'partial';
+  if (partial) bits.push('<span class="warn">车次列表不完整</span>');
+  const miss = e.missing_schedules ?? (D && Array.isArray(D.missing) ? D.missing.length : D && typeof D.missing === 'number' ? D.missing : 0);
+  if (miss) bits.push(`<span class="warn">缺停站表 ${miss} 趟${e.missing_ratio != null ? `（${(e.missing_ratio * 100).toFixed(1)}%）` : ''}</span>`);
+  if (e.prev_inferred ?? (D && D.prev_inferred)) bits.push('凌晨在途车为推定');
+  for (const x of e.notes || []) bits.push(x);
+  $('dinfo').innerHTML = bits.join(' · ');
+  $('dinfo').title = $('dinfo').textContent;
+}
+$('date').onchange = e => { e.target.blur(); loadDate(e.target.value); };
+const stepDate = k => { const ss = selectable(), i = ss.findIndex(x => x.date === curDate), j = i + k;
+  if (i >= 0 && j >= 0 && j < ss.length) loadDate(ss[j].date); };
+$('dprev').onclick = () => stepDate(-1);
+$('dnext').onclick = () => stepDate(1);
+
+// 加载某日数据：保留时刻 T 与视野；选中的车次按车次号在新数据里重找，车站/线路照旧
+// partialT：首次加载时给出初始时刻；落在首片时段内就先用首片画首屏，其余片到了再整份重新初始化（选中按车次接续）
+async function loadDate(date, partialT = null) {
+  const e = dateEntry(date);
+  if (!e || !e.selectable || !e.file) return false;
+  if (date === curDate && D) return true;
+  const seq = ++loadSeq;
+  switching = true; $('dloading').style.display = ''; $('date').disabled = true;
+  try {
+    let data = await expandGeo(await fetchJson(e.file));
+    if (seq !== loadSeq) return false;              // 期间又切了别的日期
+    const sp = data.split;
+    if (sp) {
+      const restP = fetchJson(sp.rest);
+      restP.catch(() => {});
+      if (partialT != null && partialT >= sp.t[0] && partialT <= sp.t[1]) {
+        curDate = date;
+        initData(data);
+        restP.then(rest => {
+          if (seq !== loadSeq) return;
+          initData(mergeRest(data, rest));
+          if (!switching) $('dloading').style.display = 'none';
+        }).catch(() => { if (seq === loadSeq) $('dinfo').innerHTML = `<span class="warn">${date} 其余车次加载失败</span>`; });
+        return true;
+      }
+      data = mergeRest(data, await restP);
+      if (seq !== loadSeq) return false;
+    }
+    curDate = date;
+    initData(data);
+    return true;
+  } catch (err) {
+    if (seq === loadSeq) { $('dinfo').innerHTML = `<span class="warn">${date} 加载失败</span>`; }
+    return false;
+  } finally {
+    if (seq === loadSeq) {
+      switching = false; $('date').disabled = false; renderDateBox();
+      if (!D || !D.split) $('dloading').style.display = 'none';   // 首片先画的，其余片到了再藏
+      if (hashReady) { saveView(); writeHash(true); }
+    }
+  }
+}
+
+// 用一份 map_data 初始化（首次与切换日期共用）；清掉与旧数据绑定的状态
+// contRoll：播放跨过 24:00 自动切到下一天（时间连续）。此时选中/跟随的列车按（车次，始发日期）在新数据里接续；
+// 手动换日期时时刻不连续，按车次重找（优先该时刻在跑的那列）
+let contRoll = false;
+function initData(data) {
+  const selCode = sel ? sel.c.split('/')[0] : null, selOd = sel && D ? runOd(sel) : null,
+        selStName = selSt ? selSt.name : null, wasFollow = follow, sameDate = D && data.date === D.date;
+  D = data;
+  G = D._G || D.geoms.map(g => ({
+    km: Float64Array.from(g, p => p[0]),
+    lon: Float64Array.from(g, p => p[1]),
+    lat: Float64Array.from(g, p => p[2]),
+    ele: g[0] && g[0].length > 3 ? Int16Array.from(g, p => p[3]) : null,
+  }));
+  const byName = {};
+  ST = (D.stations || []).map(([name, lon, lat, n, code, ele]) => (byName[name] = { name, lon, lat, n, code, ele: ele ?? null, ev: [] }));
+  ST.sort((a, b) => a.n - b.n);      // 大站后画，压在上面
+  for (const tr of D.trains) tr.lv = liveryOf(tr);
+  const fxRow = document.querySelector('#legend [data-fx]'); if (fxRow) fxRow.hidden = !D.trains.some(t => t.fx);
+  // beg / end：始发、终到站。数据里终到站的“发”也填了时刻（= 到），始发站可能填了“到”，按站序判断
+  for (const tr of D.trains) {
+    tr.s.forEach(([name, a, d], i) => { if (byName[name]) byName[name].ev.push({ tr, a, d, beg: i === 0, end: i === tr.s.length - 1 }); });
+    for (const leg of tr.l) if (leg && leg[5]) for (const w of leg[5])
+      if (w[4] === '技术停车' && byName[w[3]]) byName[w[3]].ev.push({ tr, a: w[1], d: w[2], wait: w[4] });
+  }
+  stationAxes(byName);
+  STBY = byName;
+  cityBases();
+  hlCache.clear();                   // 线路高亮范围按车站位置算，车站随数据变
+  hover = null; active = []; stShown = []; stLabelBoxes = []; if (!sameDate && !contRoll) labMem.clear();
+  focus = focusSel = focusSt = null;
+  // 跨日接续：新数据里没有这列（午夜前已到站）就取消选中，不跳到别的车
+  sel = selCode ? (contRoll ? runsOf(selCode).find(tr => runOd(tr) === selOd) || null : findRun(selCode)) : null;
+  selSt = selStName ? STBY[selStName] || null : null;
+  follow = wasFollow && !!sel; followTr = follow ? sel : null;
+  if (!sel && !selSt && !selLine) $('panel').style.display = 'none';
+  document.title = `列车位置地图 · ${curDate || D.date}`;
+  if (firstInit) { firstInit = false; firstSetup(); }
+  else { if (railLayer.c) railLayer.redraw(); draw(); }
+  setTimeout(upgradeGeo, 0);         // 首屏画完再下载精细几何，不和首屏抢带宽
+}
+
+// 加载顺序（首屏优先）：map_dates.json → 粗糙路网（到了立刻画、撤掉遮罩）→ 粗糙几何 + 当日首片 → 画列车后再拉客里表、
+// 其余车次、精细几何；精细路网放大过 RAILS_LO_MAXZ 才拉
+let kbPromise = null, railsPromise = null;
+function startRailsFetch() {
+  if (railsPromise) return railsPromise;
+  railsPromise = fetch((DATES && (DATES.rails_lo || DATES.rails)) || 'map_rails.json', { priority: 'high' })
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(rj => {
+      const { rails, aux, lo } = parseRails(rj);
+      RAILS_LO = rails;
+      if (!lo) { RAILS_HI = rails; AUX = aux; }       // 只有一版（本地未打包）
+      railLayer.addTo(map);
+      // 路网画布放在列车画布下面（列车画布可能还没加）
+      if (overlay.c && overlay.c.parentNode) map.getPanes().overlayPane.insertBefore(railLayer.c, overlay.c);
+      const ld = $('loading');
+      if (ld && !D) { ld.classList.add('mini'); ld.textContent = '加载列车数据…'; }
+    });
+  railsPromise.catch(() => {});
+  return railsPromise;
+}
+function startSharedFetches() {
+  startRailsFetch();
+  if (!kbPromise) kbPromise = fetch((DATES && DATES.kelibiao) || 'map_kelibiao.json').then(r => r.ok ? r.json() : null).catch(() => null);
+}
+
+// 只做一次：图例、客里表、路网底图、时刻恢复、动画
+function firstSetup() {
+  if (splitOn) setSplit(true);       // 上次开着分屏
+  drawLegend();
+  startSharedFetches();
+  kbPromise.then(kb => {
+    if (!kb) return;
+    KB = kb; KBST = {};
+    for (const [lid, ln] of Object.entries(KB.lines)) {
+      const byZx = {};
+      for (const [, km, zx] of ln.st) if (km != null) {
+        const b = byZx[zx] || (byZx[zx] = { k0: km, k1: km });
+        if (km < b.k0) b.k0 = km;
+        if (km > b.k1) b.k1 = km;
+      }
+      for (const [name, km, zx, flag, lim, ju, code] of ln.st) {
+        const b = byZx[zx];
+        const d0 = km != null && b ? Math.round(Math.abs(km - b.k0) * 10) / 10 : null;
+        const d1 = km != null && b ? Math.round(Math.abs(b.k1 - km) * 10) / 10 : null;
+        (KBST[name] ||= []).push({ lid, km, d0, d1, zx, flag, lim: lim || '', ju: ju || '', code: code || '' });
+      }
+    }
+    for (const v of Object.values(KBST)) v.sort((a, b) => (b.flag & 1) - (a.flag & 1) || KB.lines[a.lid].n.localeCompare(KB.lines[b.lid].n, 'zh'));
+    if (pendingHash) { pendingHash = false; readHash(); } else draw();
+  }).catch(() => {});
+  overlay.addTo(map);                // 路网画布若已在，列车画布追加在它后面，正好压在上面
+  $('loading').remove();
+  setT(saved && okNum(saved.t) && saved.t >= 0 && saved.t <= 1440 ? saved.t : 480); readHash(); requestAnimationFrame(tick);
+}
+
+(async () => {
+  try {
+    const r = await fetch('map_dates.json', { cache: 'no-cache' });
+    if (r.ok) { const m = await r.json(); if (m && Array.isArray(m.dates) && m.dates.some(x => x.selectable && x.file)) DATES = m; }
+  } catch (e) {}
+  // 先只拉粗糙路网（约 0.2 MB），到了（或失败）再拉列车数据，不和它抢带宽
+  await Promise.race([startRailsFetch().catch(() => {}), new Promise(r => setTimeout(r, 4000))]);
+  if (DATES && DATES.geo) preloadGeo(DATES.geo);
+  if (!DATES) {                      // 回退：单文件
+    const data = await expandGeo(await (await fetch('map_data.json')).json());
+    curDate = null; initData(data); return;
+  }
+  // 起始日期：锚点 > 本机记忆 > 清单默认 > 最后一个可选日期
+  const ok = d => d && dateEntry(d) && dateEntry(d).selectable && dateEntry(d).file;
+  const ss = selectable();
+  const start = [parseHash().date, saved && saved.date, DATES.default].find(ok) || ss[ss.length - 1].date;
+  renderDateBox();
+  // 初始时刻（同 firstSetup + readHash）；锚点指定了车次/车站/线路时要整天数据才找得到，不用首片
+  const h0 = parseHash();
+  const t0 = h0.kind || h0.unresolved ? null
+    : h0.time ?? (saved && okNum(saved.t) && saved.t >= 0 && saved.t <= 1440 ? saved.t : 480);
+  if (!(await loadDate(start, t0))) $('loading').textContent = `${start} 数据加载失败`;
+})();
+</script></body></html>

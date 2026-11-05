@@ -1,0 +1,195 @@
+{
+ "generated_at": "2026-11-07T07:16:32+00:00",
+ "default": "2026-11-07",
+ "dates": [
+  {
+   "date": "2026-11-04",
+   "file": "map_data_2026-11-04.json?v=010f450ee6",
+   "selectable": true,
+   "reason": null,
+   "trains": 11888,
+   "list_status": "ok",
+   "missing_schedules": 0,
+   "missing_ratio": 0.0,
+   "prev_inferred": true,
+   "notes": []
+  },
+  {
+   "date": "2026-11-05",
+   "file": "map_data_2026-11-05.json?v=23d02d7789",
+   "selectable": true,
+   "reason": null,
+   "trains": 11926,
+   "list_status": "partial",
+   "missing_schedules": 0,
+   "missing_ratio": 0.0,
+   "prev_inferred": true,
+   "notes": [
+    "2 个车次搜索前缀失败"
+   ]
+  },
+  {
+   "date": "2026-11-06",
+   "file": "map_data_2026-11-06.json?v=9d0917bc6a",
+   "selectable": true,
+   "reason": null,
+   "trains": 12582,
+   "list_status": "ok",
+   "missing_schedules": 0,
+   "missing_ratio": 0.0,
+   "prev_inferred": false,
+   "notes": []
+  },
+  {
+   "date": "2026-11-07",
+   "file": "map_data_2026-11-07.json?v=b555b1c04d",
+   "selectable": true,
+   "reason": null,
+   "trains": 12326,
+   "list_status": "ok",
+   "missing_schedules": 0,
+   "missing_ratio": 0.0,
+   "prev_inferred": false,
+   "notes": []
+  },
+  {
+   "date": "2026-11-08",
+   "file": "map_data_2026-11-08.json?v=f3eb32acb8",
+   "selectable": true,
+   "reason": null,
+   "trains": 12607,
+   "list_status": "ok",
+   "missing_schedules": 0,
+   "missing_ratio": 0.0,
+   "prev_inferred": false,
+   "notes": []
+  },
+  {
+   "date": "2026-11-09",
+   "file": "map_data_2026-11-09.json?v=58698cc9c2",
+   "selectable": true,
+   "reason": null,
+   "trains": 12031,
+   "list_status": "partial",
+   "missing_schedules": 0,
+   "missing_ratio": 0.0,
+   "prev_inferred": false,
+   "notes": [
+    "1 个车次搜索前缀失败"
+   ]
+  },
+  {
+   "date": "2026-11-10",
+   "file": "map_data_2026-11-10.json?v=72c63257ac",
+   "selectable": true,
+   "reason": null,
+   "trains": 11863,
+   "list_status": "ok",
+   "missing_schedules": 0,
+   "missing_ratio": 0.0,
+   "prev_inferred": false,
+   "notes": []
+  },
+  {
+   "date": "2026-11-11",
+   "file": "map_data_2026-11-11.json?v=870bb24703",
+   "selectable": true,
+   "reason": null,
+   "trains": 11862,
+   "list_status": "ok",
+   "missing_schedules": 0,
+   "missing_ratio": 0.0,
+   "prev_inferred": false,
+   "notes": []
+  },
+  {
+   "date": "2026-11-12",
+   "file": "map_data_2026-11-12.json?v=df5ac3c0c7",
+   "selectable": true,
+   "reason": null,
+   "trains": 11865,
+   "list_status": "ok",
+   "missing_schedules": 0,
+   "missing_ratio": 0.0,
+   "prev_inferred": false,
+   "notes": []
+  },
+  {
+   "date": "2026-11-13",
+   "file": "map_data_2026-11-13.json?v=44eaf31850",
+   "selectable": true,
+   "reason": null,
+   "trains": 12387,
+   "list_status": "ok",
+   "missing_schedules": 0,
+   "missing_ratio": 0.0,
+   "prev_inferred": false,
+   "notes": []
+  },
+  {
+   "date": "2026-11-14",
+   "file": "map_data_2026-11-14.json?v=8e31667d20",
+   "selectable": true,
+   "reason": null,
+   "trains": 12200,
+   "list_status": "ok",
+   "missing_schedules": 0,
+   "missing_ratio": 0.0,
+   "prev_inferred": false,
+   "notes": []
+  },
+  {
+   "date": "2026-11-15",
+   "file": "map_data_2026-11-15.json?v=53284f31a2",
+   "selectable": true,
+   "reason": null,
+   "trains": 12385,
+   "list_status": "ok",
+   "missing_schedules": 0,
+   "missing_ratio": 0.0,
+   "prev_inferred": false,
+   "notes": []
+  },
+  {
+   "date": "2026-11-16",
+   "file": "map_data_2026-11-16.json?v=bba9592033",
+   "selectable": true,
+   "reason": null,
+   "trains": 11979,
+   "list_status": "ok",
+   "missing_schedules": 0,
+   "missing_ratio": 0.0,
+   "prev_inferred": false,
+   "notes": []
+  },
+  {
+   "date": "2026-11-17",
+   "file": "map_data_2026-11-17.json?v=d24a1b6475",
+   "selectable": true,
+   "reason": null,
+   "trains": 11785,
+   "list_status": "ok",
+   "missing_schedules": 0,
+   "missing_ratio": 0.0,
+   "prev_inferred": false,
+   "notes": []
+  },
+  {
+   "date": "2026-11-18",
+   "file": "map_data_2026-11-18.json?v=7996d2ee08",
+   "selectable": true,
+   "reason": null,
+   "trains": 11781,
+   "list_status": "ok",
+   "missing_schedules": 0,
+   "missing_ratio": 0.0,
+   "prev_inferred": false,
+   "notes": []
+  }
+ ],
+ "geo": "map_geo_lo.json?v=41ee076a13",
+ "geo_hi": "map_geo.json?v=56323b1a1e",
+ "rails": "map_rails.json?v=6634744e24",
+ "rails_lo": "map_rails_lo.json?v=6055ef7646",
+ "kelibiao": "map_kelibiao.json?v=8fd0f4aaef"
+}

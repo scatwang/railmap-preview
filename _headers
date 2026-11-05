@@ -1,0 +1,14 @@
+/map_dates.json
+  Cache-Control: no-cache
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate
+/map_geo*.json
+  Cache-Control: public, max-age=31536000, immutable
+/map_data_*.json
+  Cache-Control: public, max-age=31536000, immutable
+/map_rails*.json
+  Cache-Control: public, max-age=31536000, immutable
+/map_kelibiao.json
+  Cache-Control: public, max-age=31536000, immutable
+/vendor/*
+  Cache-Control: public, max-age=31536000, immutable
